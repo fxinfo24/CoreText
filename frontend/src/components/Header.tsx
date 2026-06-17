@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings } from 'lucide-react';
+import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings, Plus, Trash2 } from 'lucide-react';
 import * as T from '../types';
 
 interface HeaderProps {
@@ -7,9 +7,11 @@ interface HeaderProps {
   activeSite: T.Site | null;
   onSelectSite: (siteId: string) => void;
   onOpenSettings: () => void;
+  onAddSuite: () => void;
+  onDeleteSite: (siteId: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings, onAddSuite, onDeleteSite }) => {
   if (!activeSite) return null;
 
   return (
@@ -35,20 +37,46 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
       {/* Active Asset Switcher & Real-time Live Executive Stats */}
       <div className="flex flex-wrap items-center gap-3">
         
-        {/* Site Dropdown */}
-        <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <select
-            value={activeSite.id}
-            onChange={(e) => onSelectSite(e.target.value)}
-            className="bg-transparent text-sm font-bold text-slate-100 focus:outline-none pr-2 cursor-pointer"
+        {/* Site Dropdown + Add/Delete Buttons */}
+        <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <select
+              value={activeSite.id}
+              onChange={(e) => onSelectSite(e.target.value)}
+              className="bg-transparent text-sm font-bold text-slate-100 focus:outline-none pr-2 cursor-pointer"
+            >
+              {sites.map((site) => (
+                <option key={site.id} value={site.id} className="bg-slate-900 text-slate-100 py-2">
+                  {site.name} ({site.asset_value})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Add Suite Button */}
+          <button
+            onClick={onAddSuite}
+            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 p-2 rounded-xl border border-emerald-500/25 hover:border-emerald-500/40 transition-all shadow"
+            title="Add New Shareholder Suite"
           >
-            {sites.map((site) => (
-              <option key={site.id} value={site.id} className="bg-slate-900 text-slate-100 py-2">
-                {site.name} ({site.asset_value})
-              </option>
-            ))}
-          </select>
+            <Plus className="w-4 h-4" />
+          </button>
+
+          {/* Delete Suite Button */}
+          {sites.length > 1 && (
+            <button
+              onClick={() => {
+                if (window.confirm(`Permanently decommission "${activeSite.name}"? This cannot be undone.`)) {
+                  onDeleteSite(activeSite.id);
+                }
+              }}
+              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 p-2 rounded-xl border border-red-500/25 hover:border-red-500/40 transition-all shadow"
+              title="Decommission Active Suite"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Executive Quick Bar Dashboard Stats */}

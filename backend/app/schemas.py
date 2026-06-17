@@ -220,3 +220,15 @@ class AtomizationResponse(BaseModel):
 class GeoAuditResponse(BaseModel):
     status: str
     message: str
+
+class SiteCreate(BaseModel):
+    name: str
+    niche: str
+    url: str
+    asset_value: str = "$0"
+    monthly_revenue: str = "$0"
+    revenue_growth: str = "+0%"
+    topical_authority_score: int = 50
+    geo_visibility_score: int = 50
+    predictive_health_score: int = 50
+    layer3_memory: Optional[Layer3Memory] = None

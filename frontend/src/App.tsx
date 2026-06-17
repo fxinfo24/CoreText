@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { SettingsModal } from './components/SettingsModal';
 import { AtomizeModal } from './components/AtomizeModal';
+import { AddSuiteModal } from './components/AddSuiteModal';
 import { Toast } from './components/Toast';
 
 import { BriefingTab } from './components/tabs/BriefingTab';
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('tab_briefing');
   const [settings, setSettings] = useState<T.UserSettings | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAddSuiteOpen, setIsAddSuiteOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Tab dynamic data states
@@ -215,6 +217,46 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleAddSuite = async (data: {
+    name: string;
+    niche: string;
+    url: string;
+    asset_value: string;
+    monthly_revenue: string;
+    revenue_growth: string;
+  }) => {
+    try {
+      const newSite = await api.createSite(data);
+      const updatedSites = [...sites, newSite];
+      setSites(updatedSites);
+      setActiveSite(newSite);
+      await fetchTabData(newSite.id, 'tab_briefing');
+      setActiveTab('tab_briefing');
+      setIsAddSuiteOpen(false);
+      setToastMessage(`Shareholder Suite "${newSite.name}" deployed and compounding!`);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || 'Failed to create suite.';
+      setToastMessage(detail);
+    }
+  };
+
+  const handleDeleteSite = async (siteId: string) => {
+    try {
+      const res = await api.deleteSite(siteId);
+      const remaining = sites.filter((s) => s.id !== siteId);
+      setSites(remaining);
+      if (remaining.length > 0) {
+        setActiveSite(remaining[0]);
+        await fetchTabData(remaining[0].id, activeTab);
+      } else {
+        setActiveSite(null);
+      }
+      setToastMessage(res.message);
+    } catch (err) {
+      setToastMessage('Failed to decommission suite.');
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#020617] text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
       
@@ -224,6 +266,8 @@ export const App: React.FC = () => {
         activeSite={activeSite}
         onSelectSite={handleSelectSite}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onAddSuite={() => setIsAddSuiteOpen(true)}
+        onDeleteSite={handleDeleteSite}
       />
 
       {/* Main OS Layout */}
@@ -326,6 +370,12 @@ export const App: React.FC = () => {
         onClose={() => setIsAtomizeOpen(false)}
         data={atomizeData}
         onDeploy={handleDeployAtomizedSuite}
+      />
+
+      <AddSuiteModal
+        isOpen={isAddSuiteOpen}
+        onClose={() => setIsAddSuiteOpen(false)}
+        onSubmit={handleAddSuite}
       />
 
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />

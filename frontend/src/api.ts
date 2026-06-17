@@ -152,3 +152,20 @@ export const sendChatMessage = async (siteId: string, message: string): Promise<
   const res = await apiClient.post<T.ChatMessage[]>('/api/chat', { site_id: siteId, message });
   return res.data;
 };
+
+export const createSite = async (payload: {
+  name: string;
+  niche: string;
+  url: string;
+  asset_value?: string;
+  monthly_revenue?: string;
+  revenue_growth?: string;
+}): Promise<T.Site> => {
+  const res = await apiClient.post<T.Site>('/api/sites', payload);
+  return res.data;
+};
+
+export const deleteSite = async (siteId: string): Promise<{ status: string; message: string }> => {
+  const res = await apiClient.delete(`/api/sites/${siteId}`);
+  return res.data;
+};

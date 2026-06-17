@@ -1,68 +1,286 @@
-# CoreText Executive OS: Full-Stack Shareholder Compounding Suite
+<p align="center">
+  <img src="https://img.shields.io/badge/CoreText-Executive_OS-6366f1?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQyIDAtOC0zLjU4LTgtOHMzLjU4LTggOC04IDggMy41OCA4IDgtMy41OCA4LTggOHoiLz48L3N2Zz4=&labelColor=0f172a" alt="CoreText Executive OS" />
+  <img src="https://img.shields.io/badge/version-2.0.0-10b981?style=for-the-badge&labelColor=0f172a" alt="Version" />
+  <img src="https://img.shields.io/badge/license-MIT-a78bfa?style=for-the-badge&labelColor=0f172a" alt="License" />
+  <img src="https://img.shields.io/badge/python-3.11+-3b82f6?style=for-the-badge&logo=python&logoColor=white&labelColor=0f172a" alt="Python" />
+  <img src="https://img.shields.io/badge/react-18-61dafb?style=for-the-badge&logo=react&logoColor=white&labelColor=0f172a" alt="React" />
+</p>
 
-> **Built with React 18, Vite, TypeScript, Tailwind CSS, Recharts, Python FastAPI, and SQLite.**
+<h1 align="center">CoreText Executive OS</h1>
 
----
-
-## 1. Executive Summary & Full-Stack Architecture
-
-While **Bloggent** genuinely introduced the foundational **Director vs. Operator** mental model, it operates under a first-generation architectural ceiling (reactive monitoring, isolated single-site databases, and uniform manual brief approval).
-
-**CoreText Executive OS** has been completely developed as a highly robust, enterprise-ready **Full-Stack Application** to make you a definitive **Shareholder**. You establish your asset compounding parameters once, review prioritized multi-dimensional content portfolios, and click to trigger fully predictive AI Webhook engines that compound your enterprise asset valuation permanently.
-
----
-
-## 2. Technical Stack Breakdown
-
-The repository is organized into two completely decoupled, production-grade services:
-
-### 🐍 Python FastAPI Backend (`backend/`)
-* **Core Engine:** High-performance asynchronous FastAPI server (`http://localhost:8000`).
-* **Persistent DB:** SQLite database (`coretext.db`) powered by SQLAlchemy Object-Relational Mapping (`models.py`) and stringent Pydantic data validation schemas (`schemas.py`).
-* **Frontier AI Studio:** Real Python AI logic (`ai_engine.py`) built to integrate with OpenAI (`gpt-4o`) and Anthropic (`claude-3-5-sonnet`) APIs, with advanced autonomous Fallbacks.
-* **Predictive Signal Runner:** Serving leading indicators 2-4 weeks forward (Crawl Budget velocity, CTR micro-dips, seasonal demand curves).
-
-### ⚛️ React + Vite + TypeScript Frontend (`frontend/`)
-* **State & Networking:** Highly modular React 18 components communicating flawlessly with FastAPI via **Axios** with fully typed interfaces (`types.ts`).
-* **Elite Executive UI:** Premium dark-slate Tailwind CSS aesthetics (`bg-slate-950`) with glowing cybernetic accents, glassmorphism panels, and highly responsive navigation.
-* **Graphical Intelligence:** Integrated **Recharts** rendering dynamic multi-signal forward compounding curves, multi-channel revenue attribution pacing, and shifting AI search ecosystems.
-* **100% CTB Adherence:** Completely eliminating Calls to Action (CTAs). Every interaction executes Click-to-Benefit (CTB) psychology. E.g. `"Secure 3-Week Preemptive Dominance"`, `"Reclaim 4 Hours of Channel Atomization"`, `"Deploy Preemptive Decay Shield"`.
+<p align="center">
+  <strong>The Shareholder Asset Compounding Suite</strong><br/>
+  <em>Enterprise-grade full-stack command center for autonomous content portfolio management, predictive SEO intelligence, and multi-site revenue compounding.</em>
+</p>
 
 ---
 
-## 3. The 10 Shareholder Modules Included
+## 🎯 What is CoreText?
 
-1. ⚡ **Morning Briefing (`BriefingTab.tsx`):** A 5-minute Shareholder review containing exactly 3 sentences of overnight situation summary, highly ranked strategic focus decisions (with proportional approval friction), and real-time financial run-rates.
-2. 🧠 **Nervous System Stack (`StackTab.tsx`):** A three-layer brain synthesizing **Layer 1 (Universal LLM)**, **Layer 2 (Live Niche Market Feeds & Velocity)**, and **Layer 3 (Site Institutional Moat Memory)**.
-3. 🚦 **Decision Routing (`RoutingTab.tsx`):** A 4-tier Action Matrix (Tier 1 Fully Autonomous overnight tasks vs. Tier 4 High-stakes strategic dialogue).
-4. 📊 **Content Portfolio (`PortfolioTab.tsx`):** Multi-dimensional topic investment assets prioritized by Opportunity Scores (Demand, GEO potential, monetization CPA, Time-to-Result) and connected to our **Multi-Format Content Atomization Studio**.
-5. 🤖 **GEO Studio (`GeoTab.tsx`):** Deploying highly structured markdown/JSON *"AI Answer Baits"* to trigger citations by **ChatGPT Search**, **Perplexity Pro**, and **Claude Artifacts**. Woven with quarterly SGE audit remediation tools.
-6. 🛡️ **Decay Shield (`DecayTab.tsx`):** Predicting content decay 30 days before SERP rankings actually dip, with autonomous refresh briefs ready to execute.
-7. 💵 **Monetization Engine (`MonetizationTab.tsx`):** Per-article $/RPM attribution mapping and active recommendation engines connecting high-traffic unmonetized funnels with premium partner brands.
-8. 🎯 **Competitive Radar (`CompetitorsTab.tsx`):** Tracking competitor content publishing velocity and deploying Fast Response Briefs to intercept unaddressed forum questions across Reddit, Quora, X, and YouTube Search.
-9. 🐝 **Collective Hive (`HiveTab.tsx`):** Privacy-safe cross-pollination. When an interactive JavaScript widget or voiceover strategy proves victorious on one site, the Hive network autonomously migrates and adapts it to all other portfolio assets.
-10. 💬 **Conversational AI Co-Director (`ChatTab.tsx`):** Real/mock Co-Director AI chat. Translate complex strategic queries into concrete executable pipelines instantly.
+CoreText Executive OS is a **fully autonomous content portfolio management system** that transforms you from an operator into a **Shareholder**. You establish your asset compounding parameters once, review prioritized multi-dimensional content portfolios, and trigger fully predictive AI webhook engines that compound your enterprise asset valuation permanently.
+
+### The Shareholder Mental Model
+
+| Role | Responsibility |
+|---|---|
+| **Shareholder** (You) | Set strategy. Review briefings. Approve Tier 3/4 decisions. |
+| **CoreText Executive OS** | Executes Tier 1/2 autonomously. Predicts decay. Intercepts trends. Compounds revenue. |
 
 ---
 
-## 4. Launching the Full-Stack Platform
+## ✨ Key Features
 
-You can launch both the FastAPI backend and the React Vite UI proxy simultaneously with a single command!
+### 🌅 Morning Briefing Engine
+Autonomous overnight situation reports per asset — revenue pacing, strategic decisions queued, 30-day forecasts, and compounding metrics. One screen, full portfolio awareness.
 
-### Execution Script:
+### 🧠 3-Layer Nervous System Stack
+- **Layer 1** — Real-time crawl budget, CTR micro-dip detection, and predictive health scoring
+- **Layer 2** — Industry velocity analysis, algorithm weather, and emerging topic cluster interception
+- **Layer 3** — Persistent AI memory per site: audience posture, tone calibration, monetization rules
+
+### 🔀 Intelligent Decision Routing (4-Tier)
+| Tier | Description | Execution |
+|---|---|---|
+| **T1** | Broken links, meta updates, schema fixes | Fully autonomous |
+| **T2** | Statistic refreshes, FAQ injections | Autonomous + notification |
+| **T3** | New content clusters, link restructuring | Human approval required |
+| **T4** | Strategic pivots, product launches | Human discussion required |
+
+### 📊 Content Portfolio Optimizer
+Multi-dimensional scoring engine (demand × GEO × monetization × competitive gap × authority fit) with one-click **Atomization Studio** — instantly fragments a pillar into newsletter, LinkedIn carousel, Twitter thread, YouTube script, and podcast outline.
+
+### 🌐 GEO Engine Visibility (Generative Engine Optimization)
+Track and optimize your citation footprint across **ChatGPT Search**, **Perplexity Pro**, and **Claude** — deploy structured AI Answer Baits and run citability audits.
+
+### 🛡️ Preemptive Content Decay Shield
+Predictive decay probability scoring with autonomous refresh briefing generation. Catch ranking erosion 14–30 days before it hits.
+
+### 💰 Revenue Maximizer
+Per-article RPM tracking, untapped affiliate gap detection, digital product creation opportunities, and live affiliate program radar.
+
+### 🏟️ Competitive Intelligence & Trend Interception
+Real-time competitor publishing velocity monitoring with autonomous fast-response brief generation for viral trend windows (X/Twitter, Reddit, HackerNews, GitHub Trending).
+
+### 🐝 Hive Mind Cross-Pollination
+Transfer winning strategies between portfolio sites — conversion tactics, content formats, and engagement patterns that compound across your entire asset network.
+
+### 💬 AI Co-Director Chat
+Context-aware strategic dialogue powered by OpenAI GPT-4o and Anthropic Claude, with full Layer 3 memory access for every asset in your portfolio.
+
+### ➕ Dynamic Suite Management
+Add and remove Shareholder Suites on the fly via the UI — no database resets, no code changes. Scale from 1 to unlimited portfolio assets dynamically.
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  FRONTEND (React 18)            │
+│  Vite · TypeScript · Tailwind CSS · Recharts    │
+│  Lucide Icons · Axios                           │
+│  Port: 3000                                     │
+├─────────────────────────────────────────────────┤
+│                   REST API                      │
+├─────────────────────────────────────────────────┤
+│                BACKEND (FastAPI)                │
+│  Python 3.11+ · SQLAlchemy ORM · Pydantic v2    │
+│  OpenAI SDK · Anthropic SDK                     │
+│  Port: 8000                                     │
+├─────────────────────────────────────────────────┤
+│              PERSISTENCE (SQLite)               │
+│  coretext.db — zero-config local database       │
+└─────────────────────────────────────────────────┘
+```
+
+### Backend (`backend/`)
+
+| File | Purpose |
+|---|---|
+| `app/main.py` | FastAPI application with CORS and router registration |
+| `app/models.py` | SQLAlchemy ORM models (16 tables) |
+| `app/schemas.py` | Pydantic validation schemas |
+| `app/ai_engine.py` | OpenAI + Anthropic integration with autonomous fallbacks |
+| `app/init_db.py` | Database seeding with production-grade demo data |
+| `app/database.py` | SQLite engine and session management |
+| `app/routers/` | Modular API routers (sites, briefing, chat, etc.) |
+
+### Frontend (`frontend/`)
+
+| File | Purpose |
+|---|---|
+| `src/App.tsx` | Root application with state management and tab routing |
+| `src/api.ts` | Typed Axios API client |
+| `src/types.ts` | Full TypeScript interface definitions |
+| `src/components/Header.tsx` | Executive dashboard header with live stats |
+| `src/components/Sidebar.tsx` | Navigation module switcher |
+| `src/components/AddSuiteModal.tsx` | Dynamic suite creation modal |
+| `src/components/tabs/` | 10 specialized tab components |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Python 3.11+** with `pip`
+- **Node.js 18+** with `npm`
+
+### 1. Clone & Install
+
 ```bash
-# In your Arena terminal or local development environment
+git clone https://github.com/fxinfo24/CoreText.git
+cd CoreText
+```
+
+### 2. Backend Setup
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python run.py
+```
+
+Backend starts at **http://localhost:8000** — verify with `curl http://localhost:8000`
+
+### 3. Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend starts at **http://localhost:3000** — open in browser.
+
+### 4. One-Command Launch (macOS/Linux)
+
+```bash
+chmod +x run_coretext.sh
 ./run_coretext.sh
 ```
 
-*(Alternatively, you can run `python3 start.py` in the root directory).*
+---
 
-### What Happens:
-1. The **FastAPI Server** boots up on `http://localhost:8000` (auto-seeding `coretext.db` if not already initialized).
-2. The **React Vite Server** launches on `http://localhost:3000` with an active JSON proxy directly to the backend.
-3. Open `http://localhost:3000` in your browser to inspect and interact with the complete Shareholder suite.
+## ⚙️ Configuration
+
+### AI Engine API Keys
+
+Open **Settings** (⚙️ icon in header) to configure:
+
+| Provider | Models Used | Purpose |
+|---|---|---|
+| **OpenAI** | `gpt-4o` | Content atomization, chat, strategic analysis |
+| **Anthropic** | `claude-3-5-sonnet` | Fallback AI engine, deep reasoning tasks |
+
+> **Note:** CoreText works fully without API keys — all core features (briefings, portfolios, decay shields, GEO audits) operate on deterministic logic. AI keys unlock enhanced chat and atomization quality.
 
 ---
 
-### Designed & Developed for Elite Asset Compounders
-*No manual work. No operator fatigue. Pure automated equity compounding.*
+## 📡 API Reference
+
+All endpoints are prefixed with `/api/`. Full interactive docs at **http://localhost:8000/docs** (Swagger UI).
+
+### Sites & Suites
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/sites` | List all shareholder suites |
+| `GET` | `/api/sites/{id}` | Get single suite |
+| `POST` | `/api/sites` | **Create new suite** (dynamic) |
+| `DELETE` | `/api/sites/{id}` | **Decommission suite** (cascade) |
+
+### Intelligence Modules
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/briefing/{site_id}` | Morning briefing |
+| `GET` | `/api/nervous-system/{site_id}` | 3-layer nervous system |
+| `GET` | `/api/decisions/{site_id}` | 4-tier decision queue |
+| `POST` | `/api/decisions/execute/{id}` | Execute decision |
+| `GET` | `/api/portfolios/{site_id}` | Content portfolios |
+| `POST` | `/api/portfolios/atomize` | Atomize content |
+| `GET` | `/api/geo/{site_id}` | GEO visibility data |
+| `GET` | `/api/decay/{site_id}` | Decay predictions |
+| `POST` | `/api/decay/shield/{id}` | Deploy decay shield |
+| `GET` | `/api/monetization/{site_id}` | Revenue intelligence |
+| `GET` | `/api/competitors/{site_id}` | Competitive intel |
+| `GET` | `/api/hive` | Hive mind learnings |
+| `POST` | `/api/chat` | AI Co-Director chat |
+
+---
+
+## 🗂️ Project Structure
+
+```
+CoreText/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI app entry
+│   │   ├── models.py            # 16 SQLAlchemy models
+│   │   ├── schemas.py           # Pydantic schemas
+│   │   ├── database.py          # DB engine config
+│   │   ├── ai_engine.py         # AI integration layer
+│   │   ├── init_db.py           # Seed data
+│   │   └── routers/             # 11 modular API routers
+│   ├── requirements.txt
+│   ├── run.py
+│   └── coretext.db
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── api.ts
+│   │   ├── types.ts
+│   │   └── components/
+│   │       ├── Header.tsx
+│   │       ├── Sidebar.tsx
+│   │       ├── AddSuiteModal.tsx
+│   │       ├── SettingsModal.tsx
+│   │       ├── AtomizeModal.tsx
+│   │       ├── Toast.tsx
+│   │       └── tabs/             # 10 tab components
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tailwind.config.js
+├── run_coretext.sh
+├── .gitignore
+└── README.md
+```
+
+---
+
+## 🔐 Security Notes
+
+- API keys are stored locally in SQLite — never committed to version control
+- CORS is configured for local development (`*`) — restrict for production
+- No authentication layer by default — add JWT/OAuth for deployment
+- All AI calls use official SDKs with proper error handling
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Multi-user authentication (JWT + role-based access)
+- [ ] PostgreSQL migration for production workloads
+- [ ] Webhook integrations (Stripe, PartnerStack, Impact)
+- [ ] Scheduled autonomous briefing emails (SendGrid/Resend)
+- [ ] Real-time Google Search Console API integration
+- [ ] Live Perplexity/ChatGPT citation tracking
+- [ ] Docker Compose deployment configuration
+- [ ] Mobile-responsive PWA shell
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <strong>CoreText Executive OS v2.0.0</strong><br/>
+  <em>Stop operating. Start compounding.</em>
+</p>
