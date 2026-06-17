@@ -6,12 +6,12 @@ from typing import List
 
 router = APIRouter(tags=["Preemptive Decay Shield"])
 
-@router.get("/api/decay/{site_id}", response_model=List[schemas.DecayItem])
+@router.get("/decay/{site_id}", response_model=List[schemas.DecayItem])
 def get_decay_items(site_id: str, db: Session = Depends(get_db)):
     items = db.query(models.DBDecayItem).filter(models.DBDecayItem.site_id == site_id).all()
     return items
 
-@router.post("/api/decay/shield/{decay_id}")
+@router.post("/decay/shield/{decay_id}")
 def deploy_decay_shield(decay_id: str, db: Session = Depends(get_db)):
     item = db.query(models.DBDecayItem).filter(models.DBDecayItem.id == decay_id).first()
     if not item:

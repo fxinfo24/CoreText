@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 router = APIRouter(tags=["Nervous System Stack"])
 
-@router.get("/api/nervous-system/{site_id}")
+@router.get("/nervous-system/{site_id}")
 def get_nervous_system(site_id: str, db: Session = Depends(get_db)):
     l2 = db.query(models.DBLayer2Niche).filter(models.DBLayer2Niche.site_id == site_id).first()
     hf = db.query(models.DBHealthForecast).filter(models.DBHealthForecast.site_id == site_id).first()

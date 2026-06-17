@@ -8,12 +8,12 @@ import uuid
 
 router = APIRouter(tags=["Conversational Co-Director AI"])
 
-@router.get("/api/chat/{site_id}", response_model=List[schemas.ChatMessage])
+@router.get("/chat/{site_id}", response_model=List[schemas.ChatMessage])
 def get_chat_history(site_id: str, db: Session = Depends(get_db)):
     msgs = db.query(models.DBChatMessage).filter(models.DBChatMessage.site_id == site_id).order_by(models.DBChatMessage.timestamp).all()
     return msgs
 
-@router.post("/api/chat", response_model=List[schemas.ChatMessage])
+@router.post("/chat", response_model=List[schemas.ChatMessage])
 def send_chat_message(req: schemas.ChatRequest, db: Session = Depends(get_db)):
     site = db.query(models.DBSite).filter(models.DBSite.id == req.site_id).first()
     site_name = site.name if site else "Your Enterprise Asset"

@@ -8,12 +8,12 @@ import random
 
 router = APIRouter(tags=["Content Opportunity Portfolio"])
 
-@router.get("/api/portfolios/{site_id}", response_model=List[schemas.ContentPortfolio])
+@router.get("/portfolios/{site_id}", response_model=List[schemas.ContentPortfolio])
 def get_portfolios(site_id: str, db: Session = Depends(get_db)):
     items = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.site_id == site_id).all()
     return items
 
-@router.post("/api/portfolios/recalculate/{site_id}", response_model=List[schemas.ContentPortfolio])
+@router.post("/portfolios/recalculate/{site_id}", response_model=List[schemas.ContentPortfolio])
 def recalculate_portfolios(site_id: str, db: Session = Depends(get_db)):
     items = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.site_id == site_id).all()
     
@@ -30,7 +30,7 @@ def recalculate_portfolios(site_id: str, db: Session = Depends(get_db)):
 class AtomizeRequest(schemas.BaseModel):
     portfolio_id: str
 
-@router.post("/api/portfolios/atomize", response_model=schemas.AtomizationResponse)
+@router.post("/portfolios/atomize", response_model=schemas.AtomizationResponse)
 def atomize_portfolio(req: AtomizeRequest, db: Session = Depends(get_db)):
     item = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.id == req.portfolio_id).first()
     if not item:

@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 
 router = APIRouter(tags=["Competitive Radar"])
 
-@router.get("/api/competitors/{site_id}")
+@router.get("/competitors/{site_id}")
 def get_competitors_and_trends(site_id: str, db: Session = Depends(get_db)):
     comps = db.query(models.DBCompetitor).filter(models.DBCompetitor.site_id == site_id).all()
     trends = db.query(models.DBInterceptedTrend).filter(models.DBInterceptedTrend.site_id == site_id).all()
@@ -17,7 +17,7 @@ def get_competitors_and_trends(site_id: str, db: Session = Depends(get_db)):
         "intercepted_trends": trends
     }
 
-@router.post("/api/competitors/intercept/{trend_id}")
+@router.post("/competitors/intercept/{trend_id}")
 def intercept_trend(trend_id: str, db: Session = Depends(get_db)):
     trend = db.query(models.DBInterceptedTrend).filter(models.DBInterceptedTrend.id == trend_id).first()
     if not trend:

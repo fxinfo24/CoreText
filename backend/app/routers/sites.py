@@ -7,19 +7,19 @@ import re
 
 router = APIRouter(tags=["Sites & Settings"])
 
-@router.get("/api/sites", response_model=List[schemas.Site])
+@router.get("/sites", response_model=List[schemas.Site])
 def get_all_sites(db: Session = Depends(get_db)):
     sites = db.query(models.DBSite).all()
     return sites
 
-@router.get("/api/sites/{site_id}", response_model=schemas.Site)
+@router.get("/sites/{site_id}", response_model=schemas.Site)
 def get_site(site_id: str, db: Session = Depends(get_db)):
     site = db.query(models.DBSite).filter(models.DBSite.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Shareholder property asset not found")
     return site
 
-@router.post("/api/sites", response_model=schemas.Site, status_code=201)
+@router.post("/sites", response_model=schemas.Site, status_code=201)
 def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db)):
     # Generate a slug-based ID from the name
     slug = re.sub(r'[^a-z0-9]+', '_', payload.name.lower()).strip('_')
@@ -98,7 +98,7 @@ def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db)):
     db.refresh(new_site)
     return new_site
 
-@router.delete("/api/sites/{site_id}")
+@router.delete("/sites/{site_id}")
 def delete_site(site_id: str, db: Session = Depends(get_db)):
     site = db.query(models.DBSite).filter(models.DBSite.id == site_id).first()
     if not site:
@@ -124,14 +124,14 @@ def delete_site(site_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": f"Suite '{site.name}' permanently decommissioned."}
 
-@router.get("/api/settings", response_model=schemas.UserSettings)
+@router.get("/settings", response_model=schemas.UserSettings)
 def get_user_settings(db: Session = Depends(get_db)):
     settings = db.query(models.DBUserSettings).first()
     if not settings:
         return schemas.UserSettings()
     return settings
 
-@router.post("/api/settings", response_model=schemas.UserSettings)
+@router.post("/settings", response_model=schemas.UserSettings)
 def update_user_settings(new_settings: schemas.UserSettings, db: Session = Depends(get_db)):
     settings = db.query(models.DBUserSettings).first()
     if not settings:

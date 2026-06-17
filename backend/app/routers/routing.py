@@ -6,7 +6,7 @@ from typing import Dict, List
 
 router = APIRouter(tags=["Decision Routing"])
 
-@router.get("/api/decisions/{site_id}")
+@router.get("/decisions/{site_id}")
 def get_decisions(site_id: str, db: Session = Depends(get_db)):
     items = db.query(models.DBDecisionItem).filter(models.DBDecisionItem.site_id == site_id).all()
     
@@ -23,7 +23,7 @@ def get_decisions(site_id: str, db: Session = Depends(get_db)):
             
     return decisions
 
-@router.post("/api/decisions/execute/{decision_id}")
+@router.post("/decisions/execute/{decision_id}")
 def execute_decision(decision_id: str, db: Session = Depends(get_db)):
     item = db.query(models.DBDecisionItem).filter(models.DBDecisionItem.id == decision_id).first()
     if not item:
