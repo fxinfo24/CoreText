@@ -87,6 +87,7 @@ def init_database():
         }
     )
     db.add_all([site_fintech, site_biohack, site_saas])
+    db.commit()
 
     # Seed Layer 2 Niche Data
     l2_fintech = models.DBLayer2Niche(
