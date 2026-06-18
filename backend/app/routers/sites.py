@@ -43,60 +43,66 @@ def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db)):
     else:
         layer3_dict = layer3.model_dump()
 
-    new_site = models.DBSite(
-        id=site_id,
-        name=payload.name,
-        niche=payload.niche,
-        url=payload.url,
-        asset_value=payload.asset_value,
-        monthly_revenue=payload.monthly_revenue,
-        revenue_growth=payload.revenue_growth,
-        topical_authority_score=payload.topical_authority_score,
-        geo_visibility_score=payload.geo_visibility_score,
-        predictive_health_score=payload.predictive_health_score,
-        layer3_memory=layer3_dict
-    )
-    db.add(new_site)
+    try:
+        new_site = models.DBSite(
+            id=site_id,
+            name=payload.name,
+            niche=payload.niche,
+            url=payload.url,
+            asset_value=payload.asset_value,
+            monthly_revenue=payload.monthly_revenue,
+            revenue_growth=payload.revenue_growth,
+            topical_authority_score=payload.topical_authority_score,
+            geo_visibility_score=payload.geo_visibility_score,
+            predictive_health_score=payload.predictive_health_score,
+            layer3_memory=layer3_dict
+        )
+        db.add(new_site)
+        # Flush the parent site first so Postgres FK constraints are satisfied
+        db.flush()
 
-    # Scaffold empty related records so tabs don't crash
-    db.add(models.DBLayer2Niche(
-        site_id=site_id,
-        industry_velocity="Awaiting Analysis",
-        algorithm_weather="No data yet — run your first Nervous System scan.",
-        geo_ai_highlights=[],
-        emerging_topic_clusters=[]
-    ))
-    db.add(models.DBHealthForecast(
-        site_id=site_id,
-        crawl_budget_status="Pending",
-        crawl_budget_text="Not yet analyzed.",
-        ctr_micro_status="Pending",
-        ctr_micro_text="Not yet analyzed.",
-        seasonality_text="No seasonality data yet.",
-        competitor_site="TBD",
-        competitor_text="No competitor intelligence yet."
-    ))
-    db.add(models.DBGeoEngineVisibility(
-        site_id=site_id,
-        chatgpt={"share": "0%", "status": "Not Tracked", "pattern": "N/A"},
-        perplexity={"share": "0%", "status": "Not Tracked", "pattern": "N/A"},
-        claude={"share": "0%", "status": "Not Tracked", "pattern": "N/A"}
-    ))
-    db.add(models.DBMorningBriefing(
-        site_id=site_id,
-        date="Pending First Briefing",
-        situation_summary=f"{payload.name} has been onboarded. Autonomous systems are initializing data collection and competitive intelligence pipelines.",
-        strategic_focus=[],
-        thirty_day_forecast="Forecasting will begin once 7 days of data have been collected.",
-        rev_compounded_month="$0",
-        rev_pacing_target=payload.monthly_revenue,
-        rev_rpm_alpha="$0",
-        rev_top_driver="Awaiting first content deployment"
-    ))
+        # Scaffold empty related records so tabs don't crash
+        db.add(models.DBLayer2Niche(
+            site_id=site_id,
+            industry_velocity="Awaiting Analysis",
+            algorithm_weather="No data yet — run your first Nervous System scan.",
+            geo_ai_highlights=[],
+            emerging_topic_clusters=[]
+        ))
+        db.add(models.DBHealthForecast(
+            site_id=site_id,
+            crawl_budget_status="Pending",
+            crawl_budget_text="Not yet analyzed.",
+            ctr_micro_status="Pending",
+            ctr_micro_text="Not yet analyzed.",
+            seasonality_text="No seasonality data yet.",
+            competitor_site="TBD",
+            competitor_text="No competitor intelligence yet."
+        ))
+        db.add(models.DBGeoEngineVisibility(
+            site_id=site_id,
+            chatgpt={"share": "0%", "status": "Not Tracked", "pattern": "N/A"},
+            perplexity={"share": "0%", "status": "Not Tracked", "pattern": "N/A"},
+            claude={"share": "0%", "status": "Not Tracked", "pattern": "N/A"}
+        ))
+        db.add(models.DBMorningBriefing(
+            site_id=site_id,
+            date="Pending First Briefing",
+            situation_summary=f"{payload.name} has been onboarded. Autonomous systems are initializing data collection and competitive intelligence pipelines.",
+            strategic_focus=[],
+            thirty_day_forecast="Forecasting will begin once 7 days of data have been collected.",
+            rev_compounded_month="$0",
+            rev_pacing_target=payload.monthly_revenue,
+            rev_rpm_alpha="$0",
+            rev_top_driver="Awaiting first content deployment"
+        ))
 
-    db.commit()
-    db.refresh(new_site)
-    return new_site
+        db.commit()
+        db.refresh(new_site)
+        return new_site
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create suite: {str(e)}")
 
 @router.delete("/sites/{site_id}")
 def delete_site(site_id: str, db: Session = Depends(get_db)):
