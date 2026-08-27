@@ -74,6 +74,8 @@ DATABASE_URL=postgresql://...  # Neon (optional; defaults to SQLite)
 JWT_EXPIRE_MINUTES=1440        # optional
 REGISTER_RATE_LIMIT=5         # optional
 REGISTER_RATE_WINDOW=600      # optional
+INVITATION_CODES=CODE1,CODE2  # optional; valid invite codes for self-signup.
+                               # Empty/missing => self-registration disabled (admin-provisioned only).
 ```
 
 ## Git state
