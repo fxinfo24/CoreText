@@ -1,64 +1,95 @@
 import os
-import random
-from typing import Dict, Any, List
+import json
+from typing import Dict, Any, List, Optional
 from app import schemas
 
-def atomize_brief(core_title: str, cluster: str, openai_key: str = None, anthropic_key: str = None) -> schemas.AtomizationResponse:
-    # If API key supplied, we could call OpenAI/Anthropic SDK here.
-    # We will construct a highly tailored intelligent blueprint for the requested asset title.
-    
-    prefix = core_title.split(":")[0] if ":" in core_title else core_title
 
-    newsletter = (
-        f"Subject: Why {prefix} is our definitive asset compounding play for 2026.\n\n"
-        f"Executive Shareholder Summary:\n"
-        f"Over the last 90 days, institutional algorithm shifts have created a completely unaddressed window in the '{cluster}' sector.\n"
-        f"By structuring our knowledge data to align with Tier 1 GEO Answer parameters, we bypass traditional reactive SEO competition entirely.\n\n"
-        f"Here is the exact mathematical blueprint we are deploying to capture institutional RevShare alpha..."
+# ---------------------------------------------------------------------------
+# Real LLM call (OpenAI primary, Anthropic fallback). Graceful degradation:
+# if no key is configured or the call fails, callers fall back to templates.
+# ---------------------------------------------------------------------------
+def _resolve_keys(openai_key: Optional[str], anthropic_key: Optional[str]):
+    oai = (openai_key or os.getenv("OPENAI_API_KEY") or "").strip()
+    ant = (anthropic_key or os.getenv("ANTHROPIC_API_KEY") or "").strip()
+    return oai, ant
+
+
+def _chat_via_openai(api_key: str, system: str, user: str, max_tokens: int = 1200) -> Optional[str]:
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        resp = client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.7,
+            timeout=30,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[ai_engine] OpenAI call failed: {e}")
+        return None
+
+
+def _chat_via_anthropic(api_key: str, system: str, user: str, max_tokens: int = 1200) -> Optional[str]:
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest"),
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            timeout=30,
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        print(f"[ai_engine] Anthropic call failed: {e}")
+        return None
+
+
+def _llm_text(system: str, user: str, openai_key: Optional[str], anthropic_key: Optional[str],
+             max_tokens: int = 1200) -> Optional[str]:
+    oai, ant = _resolve_keys(openai_key, anthropic_key)
+    if oai:
+        out = _chat_via_openai(oai, system, user, max_tokens)
+        if out:
+            return out
+    if ant:
+        out = _chat_via_anthropic(ant, system, user, max_tokens)
+        if out:
+            return out
+    return None
+
+
+SYSTEM_CHAT = (
+    "You are the CoreText Conversational Co-Director AI for an Executive OS that helps "
+    "shareholders compound digital asset value. You give sharp, specific, actionable strategic "
+    "advice about content, SEO/GEO, monetization, and competitive interception for a website. "
+    "Respond in clean HTML (h4 headings, p, ul/li, div cards) styled for a dark slate UI — "
+    "do NOT use markdown fences. Be concrete and avoid hype. Keep it under ~250 words."
+)
+
+
+def generate_chat_reply(site_name: str, user_query: str,
+                        openai_key: str = None, anthropic_key: str = None) -> str:
+    # Try the real LLM first.
+    llm = _llm_text(
+        SYSTEM_CHAT,
+        f"Site: {site_name}\nShareholder question: {user_query}",
+        openai_key, anthropic_key,
     )
-
-    linkedin = (
-        f"🚨 The industry has completely flipped its playbook on {cluster}.\n\n"
-        f"If you're still relying on reactive 2025 keyword tools, you're leaving thousands in monthly digital equity on the table.\n\n"
-        f"We just executed a collective 3-Layer Niche Analysis across 4,000 live publishing assets. Here are the 3 non-negotiable takeaways:\n\n"
-        f"1. Stop publishing flat, unstructured text tables.\n"
-        f"2. Weave verified dynamic JavaScript validation widgets into all review pillars.\n"
-        f"3. Institutional RevShare moats have completely replaced one-off CPA transactions.\n\n"
-        f"Full structural breakdown detailed below 👇"
-    )
-
-    twitter = (
-        f"1/7 We just finalized our complete 2026 content investment portfolio for {cluster}.\n\n"
-        f"Here is exactly how we reverse-engineered a $3,200/mo net return using automated Layer 2 Niche signals before competitor saturation occurs.\n\n"
-        f"🧵 Thread below..."
-    )
-
-    youtube = (
-        f"[0:00 - The Institutional Hook]: 'If you open your digital portfolio today and still see standard advisory writing wrappers, shut them down immediately.'\n"
-        f"[1:15 - The Core Compounding Mechanism]: Display our active comparative chart. Highlight the exact 18.4% tax and yield harvesting alpha.\n"
-        f"[4:30 - Autonomous Execution Action]: Showcase exactly how to deploy our pre-configured Webhook distribution pipelines."
-    )
-
-    podcast = (
-        f"Topic 1: The structural migration from reactive single-site SEO tools to fully predictive Shareholder OS platforms.\n"
-        f"Topic 2: Unpacking the exact mechanics of {core_title}.\n"
-        f"Talking Point: Why human approval bottlenecks must be strictly proportional to decision significance (Tier 1 vs. Tier 4)."
-    )
-
-    return schemas.AtomizationResponse(
-        core_title=core_title,
-        cluster=cluster,
-        newsletter=newsletter,
-        linkedin=linkedin,
-        twitter=twitter,
-        youtube=youtube,
-        podcast=podcast
-    )
+    if llm:
+        return llm
+    # Graceful fallback to the templated reply (no key / call failed).
+    return _templated_chat_reply(site_name, user_query)
 
 
-def generate_chat_reply(site_name: str, user_query: str, openai_key: str = None) -> str:
+def _templated_chat_reply(site_name: str, user_query: str) -> str:
     lower = user_query.lower()
-
     if "transition" in lower or "product reviews" in lower:
         return (
             f"<h4 class='text-base font-bold text-slate-100 border-b border-slate-800 pb-2'>6-Month Strategic Transition Roadmap: Informational to Product Reviews</h4>"
@@ -113,3 +144,83 @@ def generate_chat_reply(site_name: str, user_query: str, openai_key: str = None)
             f"<p class='text-slate-300'>I have ingested your directive regarding: <em class='text-indigo-300'>\"{user_query}\"</em> for <strong>{site_name}</strong>.</p>"
             f"<p class='text-xs text-slate-400 mt-2'>Based on our active Layer 3 Site Posture and Layer 2 Niche Velocity, this represents an exceptional compounding opportunity. I have drafted a custom 5-article structural brief and queued the necessary Tier 1 autonomous sitemap webhooks to execute this with zero operational friction.</p>"
         )
+
+
+SYSTEM_ATOMIZE = (
+    "You are the CoreText Atomization engine. Given a core asset title and a niche cluster, "
+    "produce a full multi-channel content atomization blueprint. Return ONLY a JSON object with "
+    "exactly these keys: newsletter, linkedin, twitter, youtube, podcast. Each value is a string "
+    "with concrete, specific copy (no placeholders). Keep each section focused and professional."
+)
+
+
+def atomize_brief(core_title: str, cluster: str,
+                  openai_key: str = None, anthropic_key: str = None) -> schemas.AtomizationResponse:
+    prefix = core_title.split(":")[0] if ":" in core_title else core_title
+    prompt = f"Core asset title: {core_title}\nNiche cluster: {cluster}\nProduce the atomization blueprint."
+    llm = _llm_text(SYSTEM_ATOMIZE, prompt, openai_key, anthropic_key, max_tokens=2000)
+    if llm:
+        try:
+            # Strip markdown fences if the model added them.
+            cleaned = llm.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("```", 2)[1]
+                if cleaned.startswith("json"):
+                    cleaned = cleaned[4:]
+            data = json.loads(cleaned)
+            return schemas.AtomizationResponse(
+                core_title=core_title,
+                cluster=cluster,
+                newsletter=data.get("newsletter", ""),
+                linkedin=data.get("linkedin", ""),
+                twitter=data.get("twitter", ""),
+                youtube=data.get("youtube", ""),
+                podcast=data.get("podcast", ""),
+            )
+        except Exception as e:
+            print(f"[ai_engine] atomize JSON parse failed: {e}; using template")
+    # Fallback to templated blueprint.
+    return _templated_atomize(core_title, cluster, prefix)
+
+
+def _templated_atomize(core_title: str, cluster: str, prefix: str) -> schemas.AtomizationResponse:
+    newsletter = (
+        f"Subject: Why {prefix} is our definitive asset compounding play for 2026.\n\n"
+        f"Executive Shareholder Summary:\n"
+        f"Over the last 90 days, institutional algorithm shifts have created a completely unaddressed window in the '{cluster}' sector.\n"
+        f"By structuring our knowledge data to align with Tier 1 GEO Answer parameters, we bypass traditional reactive SEO competition entirely.\n\n"
+        f"Here is the exact mathematical blueprint we are deploying to capture institutional RevShare alpha..."
+    )
+    linkedin = (
+        f"🚨 The industry has completely flipped its playbook on {cluster}.\n\n"
+        f"If you're still relying on reactive 2025 keyword tools, you're leaving thousands in monthly digital equity on the table.\n\n"
+        f"We just executed a collective 3-Layer Niche Analysis across 4,000 live publishing assets. Here are the 3 non-negotiable takeaways:\n\n"
+        f"1. Stop publishing flat, unstructured text tables.\n"
+        f"2. Weave verified dynamic JavaScript validation widgets into all review pillars.\n"
+        f"3. Institutional RevShare moats have completely replaced one-off CPA transactions.\n\n"
+        f"Full structural breakdown detailed below 👇"
+    )
+    twitter = (
+        f"1/7 We just finalized our complete 2026 content investment portfolio for {cluster}.\n\n"
+        f"Here is exactly how we reverse-engineered a $3,200/mo net return using automated Layer 2 Niche signals before competitor saturation occurs.\n\n"
+        f"🧵 Thread below..."
+    )
+    youtube = (
+        f"[0:00 - The Institutional Hook]: 'If you open your digital portfolio today and still see standard advisory writing wrappers, shut them down immediately.'\n"
+        f"[1:15 - The Core Compounding Mechanism]: Display our active comparative chart. Highlight the exact 18.4% tax and yield harvesting alpha.\n"
+        f"[4:30 - Autonomous Execution Action]: Showcase exactly how to deploy our pre-configured Webhook distribution pipelines."
+    )
+    podcast = (
+        f"Topic 1: The structural migration from reactive single-site SEO tools to fully predictive Shareholder OS platforms.\n"
+        f"Topic 2: Unpacking the exact mechanics of {core_title}.\n"
+        f"Talking Point: Why human approval bottlenecks must be strictly proportional to decision significance (Tier 1 vs. Tier 4)."
+    )
+    return schemas.AtomizationResponse(
+        core_title=core_title,
+        cluster=cluster,
+        newsletter=newsletter,
+        linkedin=linkedin,
+        twitter=twitter,
+        youtube=youtube,
+        podcast=podcast,
+    )

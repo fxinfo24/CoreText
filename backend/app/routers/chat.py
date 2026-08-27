@@ -32,11 +32,13 @@ def send_chat_message(req: schemas.ChatRequest, db: Session = Depends(get_db), u
     # Generate intelligent reply
     settings = db.query(models.DBUserSettings).first()
     openai_key = settings.openai_api_key if settings else None
-    
+    anthropic_key = settings.anthropic_api_key if settings else None
+
     reply_html = generate_chat_reply(
         site_name=site_name,
         user_query=req.message,
-        openai_key=openai_key
+        openai_key=openai_key,
+        anthropic_key=anthropic_key,
     )
     
     ai_msg = models.DBChatMessage(
