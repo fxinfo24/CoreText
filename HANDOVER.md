@@ -79,12 +79,19 @@ INVITATION_CODES=CODE1,CODE2  # optional; valid invite codes for self-signup.
 ```
 
 ## Git state
-All changes are **uncommitted** on `main` (local `CoreText` repo, currently 1 commit ahead of
-`origin/main` from the earlier `.gitignore` commit). Nothing has been pushed. Recommended next step:
-commit the auth work and push, then deploy to Vercel with the env vars above set in the Vercel
-dashboard (especially `JWT_SECRET` and `INITIAL_ADMIN_PASSWORD`, since the old deploy had NO auth).
+Committed and pushed to `origin/main` (HEAD `d2c2a81`). Live at `coretext-eight.vercel.app`,
+deployed via Vercel MCP (auto-deploy from `main`). Env vars `JWT_SECRET` + `INITIAL_ADMIN_*`
+set in Vercel dashboard. Self-signup is gated by admin-generated invite codes (DB-backed);
+`INVITATION_CODES` env no longer used.
+
+## Real LLM
+`ai_engine.py` now calls OpenAI (gpt-4o-mini) then Anthropic (claude-3-5-haiku) when a key is
+present — key from `DBUserSettings.openai_api_key`/`anthropic_api_key` (Settings UI) or
+`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` env. Falls back to the original templated output on missing
+key / call error (UI never breaks). To activate real AI: paste a key in Settings (Header ->
+gear) or set the env var, then redeploy.
 
 ## One-line summary for the next session
-Auth is real and verified; the live Vercel site must be redeployed with `JWT_SECRET` +
-`INITIAL_ADMIN_PASSWORD` set, otherwise it keeps serving the old (open) build. The remaining
-"fake AI" is the only major unbuilt claim.
+Auth + gated invite-code signup + real-LLM integration are all implemented and live. Open items:
+delete the leftover fallback admin `admin@coretext.local`/`changeme123` via User Management;
+CORS is `*` (tighten for prod); register rate-limit is in-memory (per-instance); no email-verify/2FA.
