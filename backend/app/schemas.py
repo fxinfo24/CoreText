@@ -1,6 +1,39 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class TokenData(BaseModel):
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+
+class UserPublic(BaseModel):
+    id: str
+    email: str
+    full_name: str = ""
+    role: str = "admin"
+    is_active: bool = True
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = ""
+    role: Optional[str] = "viewer"
+
+class UserUpdate(BaseModel):
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
 class UserSettings(BaseModel):
     director_name: str = "Alexander Vance"
     shareholder_posture: str = "Aggressive Compounder"

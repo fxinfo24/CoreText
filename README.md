@@ -256,14 +256,28 @@ CoreText/
 
 - API keys are stored locally in SQLite — never committed to version control
 - CORS is configured for local development (`*`) — restrict for production
-- No authentication layer by default — add JWT/OAuth for deployment
+- **Authentication is enabled:** JWT bearer tokens protect all `/api` data routes. Self-registration is open but disposable (temp-mail) domains are blocked and registration is rate-limited to blunt spam/bot signups.
+- The first admin is seeded from `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` (falls back to `admin@coretext.local` / `changeme123` for local dev). **Set both env vars in production.**
+- `JWT_SECRET` must be set to a strong value (≥32 bytes) in any deployed environment.
 - All AI calls use official SDKs with proper error handling
 
 ---
 
+### Running locally with auth
+
+```bash
+export INITIAL_ADMIN_EMAIL=you@company.com
+export INITIAL_ADMIN_PASSWORD='a-strong-password'
+export JWT_SECRET='a-long-random-secret-at-least-32-bytes'
+# optional: DATABASE_URL=postgresql://... (Neon) — defaults to SQLite
+./run_coretext.sh
+```
+
+Open the app, sign in with the seeded admin, then manage users via the **Users** (admin) or **Profile** (viewer) button in the header.
+
 ## 🗺️ Roadmap
 
-- [ ] Multi-user authentication (JWT + role-based access)
+- [x] Multi-user authentication (JWT + role-based access)
 - [ ] PostgreSQL migration for production workloads
 - [ ] Webhook integrations (Stripe, PartnerStack, Impact)
 - [ ] Scheduled autonomous briefing emails (SendGrid/Resend)

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from app.ai_engine import atomize_brief
 from typing import List
 import random
@@ -9,12 +10,12 @@ import random
 router = APIRouter(tags=["Content Opportunity Portfolio"])
 
 @router.get("/portfolios/{site_id}", response_model=List[schemas.ContentPortfolio])
-def get_portfolios(site_id: str, db: Session = Depends(get_db)):
+def get_portfolios(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     items = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.site_id == site_id).all()
     return items
 
 @router.post("/portfolios/recalculate/{site_id}", response_model=List[schemas.ContentPortfolio])
-def recalculate_portfolios(site_id: str, db: Session = Depends(get_db)):
+def recalculate_portfolios(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     items = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.site_id == site_id).all()
     
     # Give a +3 to +5 point multi-signal lift to simulate live algorithmic re-indexing
@@ -31,7 +32,7 @@ class AtomizeRequest(schemas.BaseModel):
     portfolio_id: str
 
 @router.post("/portfolios/atomize", response_model=schemas.AtomizationResponse)
-def atomize_portfolio(req: AtomizeRequest, db: Session = Depends(get_db)):
+def atomize_portfolio(req: AtomizeRequest, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     item = db.query(models.DBContentPortfolio).filter(models.DBContentPortfolio.id == req.portfolio_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Content portfolio asset not found")

@@ -1,8 +1,19 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
 
 Base = declarative_base()
+
+class DBUser(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True, index=True, default=lambda: __import__("uuid").uuid4().hex)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    full_name = Column(String, default="")
+    role = Column(String, default="admin")  # "admin" | "viewer"
+    is_active = Column(Boolean, default=True)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 class DBUserSettings(Base):
     __tablename__ = "user_settings"

@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import Dict, List
 
 router = APIRouter(tags=["Decision Routing"])
 
 @router.get("/decisions/{site_id}")
-def get_decisions(site_id: str, db: Session = Depends(get_db)):
+def get_decisions(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     items = db.query(models.DBDecisionItem).filter(models.DBDecisionItem.site_id == site_id).all()
     
     decisions = {
@@ -24,7 +25,7 @@ def get_decisions(site_id: str, db: Session = Depends(get_db)):
     return decisions
 
 @router.post("/decisions/execute/{decision_id}")
-def execute_decision(decision_id: str, db: Session = Depends(get_db)):
+def execute_decision(decision_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     item = db.query(models.DBDecisionItem).filter(models.DBDecisionItem.id == decision_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Decision item not found")

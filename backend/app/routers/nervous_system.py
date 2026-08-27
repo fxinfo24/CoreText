@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import Dict, Any
 
 router = APIRouter(tags=["Nervous System Stack"])
 
 @router.get("/nervous-system/{site_id}")
-def get_nervous_system(site_id: str, db: Session = Depends(get_db)):
+def get_nervous_system(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     l2 = db.query(models.DBLayer2Niche).filter(models.DBLayer2Niche.site_id == site_id).first()
     hf = db.query(models.DBHealthForecast).filter(models.DBHealthForecast.site_id == site_id).first()
     site = db.query(models.DBSite).filter(models.DBSite.id == site_id).first()

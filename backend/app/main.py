@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
+    auth,
     sites,
     briefing,
     nervous_system,
@@ -30,6 +31,7 @@ app.add_middleware(
 )
 
 # Include all modular sub-routers
+app.include_router(auth.router)
 app.include_router(sites.router)
 app.include_router(briefing.router)
 app.include_router(nervous_system.router)
@@ -46,7 +48,12 @@ app.include_router(chat.router)
 def read_root():
     return {
         "status": "online",
-        "engine": "CoreText Executive OS Compounding API",
+        "engine": "Cortex Executive OS Compounding API",
         "version": "2.0.0",
         "posture": "Shareholder Asset Command"
     }
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}

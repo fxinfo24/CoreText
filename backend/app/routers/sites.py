@@ -2,25 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import List
 import re
 
 router = APIRouter(tags=["Sites & Settings"])
 
 @router.get("/sites", response_model=List[schemas.Site])
-def get_all_sites(db: Session = Depends(get_db)):
+def get_all_sites(db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     sites = db.query(models.DBSite).all()
     return sites
 
 @router.get("/sites/{site_id}", response_model=schemas.Site)
-def get_site(site_id: str, db: Session = Depends(get_db)):
+def get_site(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     site = db.query(models.DBSite).filter(models.DBSite.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Shareholder property asset not found")
     return site
 
 @router.post("/sites", response_model=schemas.Site, status_code=201)
-def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db)):
+def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     # Generate a slug-based ID from the name
     slug = re.sub(r'[^a-z0-9]+', '_', payload.name.lower()).strip('_')
     site_id = f"site_{slug}"
@@ -105,7 +106,7 @@ def create_site(payload: schemas.SiteCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to create suite: {str(e)}")
 
 @router.delete("/sites/{site_id}")
-def delete_site(site_id: str, db: Session = Depends(get_db)):
+def delete_site(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     site = db.query(models.DBSite).filter(models.DBSite.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Shareholder property asset not found")
@@ -131,14 +132,14 @@ def delete_site(site_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Suite '{site.name}' permanently decommissioned."}
 
 @router.get("/settings", response_model=schemas.UserSettings)
-def get_user_settings(db: Session = Depends(get_db)):
+def get_user_settings(db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     settings = db.query(models.DBUserSettings).first()
     if not settings:
         return schemas.UserSettings()
     return settings
 
 @router.post("/settings", response_model=schemas.UserSettings)
-def update_user_settings(new_settings: schemas.UserSettings, db: Session = Depends(get_db)):
+def update_user_settings(new_settings: schemas.UserSettings, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     settings = db.query(models.DBUserSettings).first()
     if not settings:
         settings = models.DBUserSettings()

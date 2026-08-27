@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import Dict, Any, List
 
 router = APIRouter(tags=["GEO Studio"])
 
 @router.get("/geo/{site_id}")
-def get_geo(site_id: str, db: Session = Depends(get_db)):
+def get_geo(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     vis = db.query(models.DBGeoEngineVisibility).filter(models.DBGeoEngineVisibility.site_id == site_id).first()
     baits = db.query(models.DBGeoBait).filter(models.DBGeoBait.site_id == site_id).all()
     audits = db.query(models.DBGeoAudit).filter(models.DBGeoAudit.site_id == site_id).all()
@@ -23,12 +24,12 @@ def get_geo(site_id: str, db: Session = Depends(get_db)):
     }
 
 @router.post("/geo/audit/{site_id}", response_model=schemas.GeoAuditResponse)
-def run_geo_audit(site_id: str, db: Session = Depends(get_db)):
+def run_geo_audit(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     # Simulated Quarterly GEO verification walk
     return {"status": "success", "message": "Quarterly SGE GEO Verification complete. Flawless schema alignment across all sitemap URLs."}
 
 @router.post("/geo/fix/{audit_id}", response_model=schemas.GeoAuditResponse)
-def fix_geo_audit(audit_id: str, db: Session = Depends(get_db)):
+def fix_geo_audit(audit_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     audit = db.query(models.DBGeoAudit).filter(models.DBGeoAudit.id == audit_id).first()
     if not audit:
         raise HTTPException(status_code=404, detail="GEO audit defect not found")

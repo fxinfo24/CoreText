@@ -1,12 +1,47 @@
+import os
+import uuid
+
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal
 from app import models
-import uuid
+from app.security import hash_password
+
+def _seed_admin(db: Session):
+    """Create the first admin account from env vars (or a safe dev default).
+
+    Reads INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD. If unset, falls back to
+    a documented local-dev default so `run_coretext.sh` works out of the box.
+    Never overwrites an existing account.
+    """
+    email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@coretext.local").strip().lower()
+    password = os.getenv("INITIAL_ADMIN_PASSWORD", "changeme123")
+    existing = db.query(models.DBUser).filter(models.DBUser.email == email).first()
+    if existing:
+        return
+    admin = models.DBUser(
+        id=uuid.uuid4().hex,
+        email=email,
+        hashed_password=hash_password(password),
+        full_name="CoreText Administrator",
+        role="admin",
+    )
+    db.add(admin)
+    db.commit()
+    if os.getenv("INITIAL_ADMIN_EMAIL") is None:
+        print(
+            "⚠️  Seeded DEV admin admin@coretext.local / changeme123 — "
+            "set INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD for production."
+        )
+    else:
+        print(f"Seeded admin account: {email}")
 
 def init_database():
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     
+    # --- Seed initial admin user (idempotent) ---
+    _seed_admin(db)
+
     # Check if already seeded
     if db.query(models.DBSite).first():
         db.close()

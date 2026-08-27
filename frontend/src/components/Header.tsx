@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings, Plus, Trash2 } from 'lucide-react';
+import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings, Plus, Trash2, LogOut, Users } from 'lucide-react';
 import * as T from '../types';
 
 interface HeaderProps {
@@ -9,11 +9,12 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onAddSuite: () => void;
   onDeleteSite: (siteId: string) => void;
+  onOpenUserMgmt: () => void;
+  currentUser: T.User | null;
+  onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings, onAddSuite, onDeleteSite }) => {
-  if (!activeSite) return null;
-
+export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings, onAddSuite, onDeleteSite, onOpenUserMgmt, currentUser, onLogout }) => {
   return (
     <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
       {/* Brand Logo & Title */}
@@ -36,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
 
       {/* Active Asset Switcher & Real-time Live Executive Stats */}
       <div className="flex flex-wrap items-center gap-3">
-        
+        {activeSite && (<>
         {/* Site Dropdown + Add/Delete Buttons */}
         <div className="flex items-center space-x-1.5">
           <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
@@ -123,6 +124,7 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
             </div>
           </div>
         </div>
+        </>)} {/* end activeSite block */}
 
         {/* Settings Button */}
         <button
@@ -132,6 +134,32 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
         >
           <Settings className="w-5 h-5" />
         </button>
+
+        {/* Users / Profile Button */}
+        <button
+          onClick={onOpenUserMgmt}
+          className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white p-2.5 rounded-xl border border-slate-800/80 transition-all shadow flex items-center justify-center"
+          title={currentUser?.role === 'admin' ? 'User Directory' : 'My Profile'}
+        >
+          <Users className="w-5 h-5" />
+        </button>
+
+        {/* User + Logout */}
+        {currentUser && (
+          <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-inner">
+            <div className="text-right leading-tight">
+              <span className="block text-xs font-bold text-slate-100">{currentUser.full_name || currentUser.email}</span>
+              <span className="block text-[10px] uppercase tracking-wider text-indigo-400">{currentUser.role}</span>
+            </div>
+            <button
+              onClick={onLogout}
+              className="bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-300 p-2 rounded-xl border border-slate-800 hover:border-red-500/40 transition-all"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
       </div>
     </header>

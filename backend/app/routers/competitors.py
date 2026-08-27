@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import List, Dict, Any
 
 router = APIRouter(tags=["Competitive Radar"])
 
 @router.get("/competitors/{site_id}")
-def get_competitors_and_trends(site_id: str, db: Session = Depends(get_db)):
+def get_competitors_and_trends(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     comps = db.query(models.DBCompetitor).filter(models.DBCompetitor.site_id == site_id).all()
     trends = db.query(models.DBInterceptedTrend).filter(models.DBInterceptedTrend.site_id == site_id).all()
     
@@ -18,7 +19,7 @@ def get_competitors_and_trends(site_id: str, db: Session = Depends(get_db)):
     }
 
 @router.post("/competitors/intercept/{trend_id}")
-def intercept_trend(trend_id: str, db: Session = Depends(get_db)):
+def intercept_trend(trend_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     trend = db.query(models.DBInterceptedTrend).filter(models.DBInterceptedTrend.id == trend_id).first()
     if not trend:
         raise HTTPException(status_code=404, detail="Intercepted trend opportunity not found")

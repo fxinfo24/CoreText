@@ -2,17 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.security import get_current_user
 from typing import List
 
 router = APIRouter(tags=["Preemptive Decay Shield"])
 
 @router.get("/decay/{site_id}", response_model=List[schemas.DecayItem])
-def get_decay_items(site_id: str, db: Session = Depends(get_db)):
+def get_decay_items(site_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     items = db.query(models.DBDecayItem).filter(models.DBDecayItem.site_id == site_id).all()
     return items
 
 @router.post("/decay/shield/{decay_id}")
-def deploy_decay_shield(decay_id: str, db: Session = Depends(get_db)):
+def deploy_decay_shield(decay_id: str, db: Session = Depends(get_db), user: models.DBUser = Depends(get_current_user)):
     item = db.query(models.DBDecayItem).filter(models.DBDecayItem.id == decay_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Decay warning item not found")

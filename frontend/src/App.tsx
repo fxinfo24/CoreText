@@ -5,6 +5,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { AtomizeModal } from './components/AtomizeModal';
 import { AddSuiteModal } from './components/AddSuiteModal';
 import { Toast } from './components/Toast';
+import { Login } from './components/Login';
+import { UserManagementModal } from './components/UserManagementModal';
 
 import { BriefingTab } from './components/tabs/BriefingTab';
 import { StackTab } from './components/tabs/StackTab';
@@ -21,12 +23,15 @@ import * as api from './api';
 import * as T from './types';
 
 export const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<T.User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [sites, setSites] = useState<T.Site[]>([]);
   const [activeSite, setActiveSite] = useState<T.Site | null>(null);
   const [activeTab, setActiveTab] = useState('tab_briefing');
   const [settings, setSettings] = useState<T.UserSettings | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddSuiteOpen, setIsAddSuiteOpen] = useState(false);
+  const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Tab dynamic data states
@@ -45,8 +50,29 @@ export const App: React.FC = () => {
   const [atomizeData, setAtomizeData] = useState<T.AtomizationResponse | null>(null);
   const [isAtomizeOpen, setIsAtomizeOpen] = useState(false);
 
-  // Initial boot
+  // Initial auth check — restore session from stored token if valid.
   useEffect(() => {
+    const restore = async () => {
+      const token = api.getToken();
+      if (!token) {
+        setAuthChecked(true);
+        return;
+      }
+      try {
+        const user = await api.getCurrentUser();
+        setCurrentUser(user);
+      } catch {
+        api.clearToken();
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+    restore();
+  }, []);
+
+  // Initial boot (only once authenticated)
+  useEffect(() => {
+    if (!currentUser) return;
     const bootOS = async () => {
       try {
         const loadedSites = await api.getSites();
@@ -63,7 +89,20 @@ export const App: React.FC = () => {
       }
     };
     bootOS();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const handleLogin = (user: T.User) => {
+    setCurrentUser(user);
+  };
+
+  const handleLogout = async () => {
+    await api.logout();
+    setCurrentUser(null);
+    setSites([]);
+    setActiveSite(null);
+    setSettings(null);
+  };
 
   const handleSelectSite = async (siteId: string) => {
     const selected = sites.find((s) => s.id === siteId) || sites[0];
@@ -258,6 +297,14 @@ export const App: React.FC = () => {
   };
 
   return (
+    <>
+      {!authChecked ? (
+        <div className="min-h-screen flex items-center justify-center bg-[#020617] text-slate-500 text-sm">
+          Initializing secure session…
+        </div>
+      ) : !currentUser ? (
+        <Login onAuthenticated={handleLogin} />
+      ) : (
     <div className="min-h-screen flex flex-col bg-[#020617] text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
       
       {/* Top Bar Header */}
@@ -268,6 +315,9 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onAddSuite={() => setIsAddSuiteOpen(true)}
         onDeleteSite={handleDeleteSite}
+        onOpenUserMgmt={() => setIsUserMgmtOpen(true)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main OS Layout */}
@@ -378,8 +428,16 @@ export const App: React.FC = () => {
         onSubmit={handleAddSuite}
       />
 
+      <UserManagementModal
+        isOpen={isUserMgmtOpen}
+        onClose={() => setIsUserMgmtOpen(false)}
+        currentUser={currentUser}
+      />
+
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
 
     </div>
+      )}
+    </>
   );
 };

@@ -9,6 +9,90 @@ const apiClient = axios.create({
   },
 });
 
+// --- Auth token handling ----------------------------------------------------
+const TOKEN_KEY = 'coretext_token';
+
+export const getToken = (): string | null => {
+  return localStorage.getItem(TOKEN_KEY);
+};
+
+export const setToken = (token: string): void => {
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+export const clearToken = (): void => {
+  localStorage.removeItem(TOKEN_KEY);
+};
+
+// Attach the bearer token to every request when present.
+apiClient.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// If the backend rejects with 401, the session is invalid — drop the token so
+// the app returns to the login screen on the next render.
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      clearToken();
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const login = async (req: T.LoginRequest): Promise<T.AuthToken> => {
+  const res = await apiClient.post<T.AuthToken>('/api/auth/login', req);
+  return res.data;
+};
+
+export const logout = async (): Promise<void> => {
+  try {
+    await apiClient.post('/api/auth/logout');
+  } catch {
+    // stateless: ignore network errors on logout
+  }
+  clearToken();
+};
+
+export const getCurrentUser = async (): Promise<T.User> => {
+  const res = await apiClient.get<T.User>('/api/auth/me');
+  return res.data;
+};
+
+// --- Admin user management --------------------------------------------------
+export const listUsers = async (): Promise<T.User[]> => {
+  const res = await apiClient.get<T.User[]>('/api/auth/users');
+  return res.data;
+};
+
+export const createUser = async (req: {
+  email: string;
+  password: string;
+  full_name?: string;
+  role?: string;
+}): Promise<T.User> => {
+  const res = await apiClient.post<T.User>('/api/auth/users', req);
+  return res.data;
+};
+
+export const updateUser = async (
+  userId: string,
+  payload: Partial<{ email: string; full_name: string; role: string; password: string; is_active: boolean }>
+): Promise<T.User> => {
+  const res = await apiClient.put<T.User>(`/api/auth/users/${userId}`, payload);
+  return res.data;
+};
+
+export const deleteUser = async (userId: string): Promise<void> => {
+  await apiClient.delete(`/api/auth/users/${userId}`);
+};
+
 export const getSites = async (): Promise<T.Site[]> => {
   const res = await apiClient.get<T.Site[]>('/api/sites');
   return res.data;
