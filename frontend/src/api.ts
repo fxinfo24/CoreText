@@ -51,6 +51,17 @@ export const login = async (req: T.LoginRequest): Promise<T.AuthToken> => {
   return res.data;
 };
 
+export const register = async (req: {
+  email: string;
+  password: string;
+  full_name?: string;
+  role?: string;
+  invite_code: string;
+}): Promise<T.User> => {
+  const res = await apiClient.post<T.User>('/api/auth/register', req);
+  return res.data;
+};
+
 export const logout = async (): Promise<void> => {
   try {
     await apiClient.post('/api/auth/logout');

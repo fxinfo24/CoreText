@@ -26,6 +26,7 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: Optional[str] = ""
     role: Optional[str] = "viewer"
+    invite_code: Optional[str] = None
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None

@@ -59,6 +59,23 @@ def register(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many registration attempts. Try again later.",
         )
+    # Invite-code gate: self-signup requires a valid code from INVITATION_CODES.
+    # Empty/missing env => registration disabled (admin-provisioned only).
+    valid_codes = {
+        c.strip()
+        for c in os.getenv("INVITATION_CODES", "").split(",")
+        if c.strip()
+    }
+    if not valid_codes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-registration is disabled. Contact an admin for an invite code.",
+        )
+    if not req.invite_code or req.invite_code.strip() not in valid_codes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A valid invite code is required to register.",
+        )
     email = _norm_email(req.email)
     if is_disposable_email(email):
         raise HTTPException(
