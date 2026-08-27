@@ -104,6 +104,32 @@ export const deleteUser = async (userId: string): Promise<void> => {
   await apiClient.delete(`/api/auth/users/${userId}`);
 };
 
+export interface InviteCode {
+  id: string;
+  role: string;
+  created_at: string;
+  created_by: string;
+  used_by: string | null;
+  used_at: string | null;
+  revoked: boolean;
+  revoked_at: string | null;
+  code?: string | null;
+}
+
+export const createInvites = async (req: { count?: number; role?: string }): Promise<InviteCode[]> => {
+  const res = await apiClient.post<InviteCode[]>('/api/auth/invites', req);
+  return res.data;
+};
+
+export const listInvites = async (): Promise<InviteCode[]> => {
+  const res = await apiClient.get<InviteCode[]>('/api/auth/invites');
+  return res.data;
+};
+
+export const revokeInvite = async (inviteId: string): Promise<void> => {
+  await apiClient.delete(`/api/auth/invites/${inviteId}`);
+};
+
 export const getSites = async (): Promise<T.Site[]> => {
   const res = await apiClient.get<T.Site[]>('/api/sites');
   return res.data;

@@ -15,6 +15,25 @@ class DBUser(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
+
+class DBInviteCode(Base):
+    """Admin-generated, single-use invitation codes for self-signup.
+
+    The raw code is never stored — only a hash (it is a bearer credential).
+    State is derived: revoked flag, used_by/used_at, plus an optional role the
+    new account should receive.
+    """
+    __tablename__ = "invite_codes"
+    id = Column(String, primary_key=True, index=True, default=lambda: __import__("uuid").uuid4().hex)
+    code_hash = Column(String, nullable=False, unique=True, index=True)
+    role = Column(String, default="viewer")  # role granted to the account created with this code
+    created_by = Column(String, nullable=False)  # admin user id
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    used_by = Column(String, nullable=True)  # user id that consumed the code
+    used_at = Column(String, nullable=True)
+    revoked = Column(Boolean, default=False)
+    revoked_at = Column(String, nullable=True)
+
 class DBUserSettings(Base):
     __tablename__ = "user_settings"
     id = Column(Integer, primary_key=True, index=True)

@@ -7,6 +7,8 @@ reduce spam/bot signups. User-management mutations require the `admin` role.
 import os
 import uuid
 import time
+from datetime import datetime
+from hashlib import sha256
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
@@ -47,6 +49,12 @@ def _norm_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _hash_code(code: str) -> str:
+    # Deterministic hash for invite codes (bcrypt salts randomly, so it cannot
+    # be used to compare submitted codes). Codes are high-entropy random tokens.
+    return sha256(code.encode("utf-8")).hexdigest()
+
+
 @router.post("/register", response_model=schemas.UserPublic)
 def register(
     req: schemas.RegisterRequest,
@@ -59,22 +67,22 @@ def register(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many registration attempts. Try again later.",
         )
-    # Invite-code gate: self-signup requires a valid code from INVITATION_CODES.
-    # Empty/missing env => registration disabled (admin-provisioned only).
-    valid_codes = {
-        c.strip()
-        for c in os.getenv("INVITATION_CODES", "").split(",")
-        if c.strip()
-    }
-    if not valid_codes:
+    # Invite-code gate: self-signup requires a valid, unused, unrevoked code.
+    if not req.invite_code:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Self-registration is disabled. Contact an admin for an invite code.",
+            detail="An invite code is required to register.",
         )
-    if not req.invite_code or req.invite_code.strip() not in valid_codes:
+    code_hash = _hash_code(req.invite_code)  # deterministic compare (not bcrypt)
+    invite = (
+        db.query(models.DBInviteCode)
+        .filter(models.DBInviteCode.code_hash == code_hash)
+        .first()
+    )
+    if not invite or invite.revoked or invite.used_by:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="A valid invite code is required to register.",
+            detail="Invalid, used, or revoked invite code.",
         )
     email = _norm_email(req.email)
     if is_disposable_email(email):
@@ -92,7 +100,7 @@ def register(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Password must be at least 8 characters",
         )
-    role = req.role if req.role in ("admin", "viewer") else "viewer"
+    role = invite.role if invite.role in ("admin", "viewer") else "viewer"
     user = models.DBUser(
         id=uuid.uuid4().hex,
         email=email,
@@ -101,6 +109,10 @@ def register(
         role=role,
     )
     db.add(user)
+    db.flush()  # assign user.id before stamping the invite
+    # Consume the invite code (single-use, traceable to the new account).
+    invite.used_by = user.id
+    invite.used_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(user)
     return _to_public(user)
@@ -228,6 +240,87 @@ def delete_user(
     db.delete(user)
     db.commit()
     return {"status": "success", "message": f"User {user.email} removed"}
+
+
+# --- Admin invitation-code management -----------------------------------------
+def _gen_code() -> str:
+    # Unambiguous, URL-safe token; admins copy/paste these.
+    import secrets
+    return secrets.token_urlsafe(16)
+
+
+@router.post("/invites", response_model=list[schemas.InviteCodePublic])
+def create_invites(
+    req: schemas.InviteGenerateRequest,
+    admin: models.DBUser = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    role = req.role if req.role in ("admin", "viewer") else "viewer"
+    created = []
+    for _ in range(req.count):
+        raw = _gen_code()
+        code = models.DBInviteCode(
+            code_hash=_hash_code(raw),
+            role=role,
+            created_by=admin.id,
+        )
+        db.add(code)
+        db.flush()
+        # Return the raw code ONLY here; it is never stored or listed again.
+        created.append(schemas.InviteCodePublic(
+            id=code.id,
+            role=code.role,
+            created_at=code.created_at,
+            created_by=code.created_by,
+            code=raw,
+        ))
+    db.commit()
+    return created
+
+
+@router.get("/invites", response_model=list[schemas.InviteCodePublic])
+def list_invites(
+    admin: models.DBUser = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(models.DBInviteCode)
+        .order_by(models.DBInviteCode.created_at.desc())
+        .all()
+    )
+    return [
+        schemas.InviteCodePublic(
+            id=r.id,
+            role=r.role,
+            created_at=r.created_at,
+            created_by=r.created_by,
+            used_by=r.used_by,
+            used_at=r.used_at,
+            revoked=r.revoked,
+            revoked_at=r.revoked_at,
+            # code intentionally omitted
+        )
+        for r in rows
+    ]
+
+
+@router.delete("/invites/{invite_id}", status_code=status.HTTP_200_OK)
+def revoke_invite(
+    invite_id: str,
+    admin: models.DBUser = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    code = db.query(models.DBInviteCode).filter(models.DBInviteCode.id == invite_id).first()
+    if not code:
+        raise HTTPException(status_code=404, detail="Invite code not found")
+    if code.revoked:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already revoked")
+    if code.used_by:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code already used; cannot revoke")
+    code.revoked = True
+    code.revoked_at = datetime.utcnow().isoformat()
+    db.commit()
+    return {"status": "success", "message": f"Invite code {invite_id} revoked"}
 
 
 def _to_public(u: models.DBUser) -> schemas.UserPublic:

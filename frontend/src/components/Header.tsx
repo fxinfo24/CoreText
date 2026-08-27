@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings, Plus, Trash2, LogOut, Users } from 'lucide-react';
+import { Brain, TrendingUp, ShieldAlert, Zap, Award, CheckCircle2, Settings, Plus, Trash2, LogOut, Users, Ticket } from 'lucide-react';
 import * as T from '../types';
 
 interface HeaderProps {
@@ -10,11 +10,12 @@ interface HeaderProps {
   onAddSuite: () => void;
   onDeleteSite: (siteId: string) => void;
   onOpenUserMgmt: () => void;
+  onOpenInvites: () => void;
   currentUser: T.User | null;
   onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings, onAddSuite, onDeleteSite, onOpenUserMgmt, currentUser, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite, onOpenSettings, onAddSuite, onDeleteSite, onOpenUserMgmt, onOpenInvites, currentUser, onLogout }) => {
   return (
     <header className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-slate-800/80 px-4 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
       {/* Brand Logo & Title */}
@@ -143,6 +144,17 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
         >
           <Users className="w-5 h-5" />
         </button>
+
+        {/* Invitations Button (admin only) */}
+        {currentUser?.role === 'admin' && (
+          <button
+            onClick={onOpenInvites}
+            className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white p-2.5 rounded-xl border border-slate-800/80 transition-all shadow flex items-center justify-center"
+            title="Invitation Codes"
+          >
+            <Ticket className="w-5 h-5" />
+          </button>
+        )}
 
         {/* User + Logout */}
         {currentUser && (

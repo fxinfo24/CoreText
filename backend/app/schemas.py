@@ -28,6 +28,24 @@ class RegisterRequest(BaseModel):
     role: Optional[str] = "viewer"
     invite_code: Optional[str] = None
 
+
+class InviteGenerateRequest(BaseModel):
+    count: int = Field(default=1, ge=1, le=50)
+    role: str = "viewer"  # role granted to accounts created with these codes
+
+
+class InviteCodePublic(BaseModel):
+    id: str
+    role: str
+    created_at: str
+    created_by: str
+    used_by: Optional[str] = None
+    used_at: Optional[str] = None
+    revoked: bool = False
+    revoked_at: Optional[str] = None
+    # The raw code is only returned at generation time, never on list.
+    code: Optional[str] = None
+
 class UserUpdate(BaseModel):
     email: Optional[str] = None
     full_name: Optional[str] = None

@@ -7,6 +7,7 @@ import { AddSuiteModal } from './components/AddSuiteModal';
 import { Toast } from './components/Toast';
 import { Login } from './components/Login';
 import { UserManagementModal } from './components/UserManagementModal';
+import { InvitationsModal } from './components/InvitationsModal';
 
 import { BriefingTab } from './components/tabs/BriefingTab';
 import { StackTab } from './components/tabs/StackTab';
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddSuiteOpen, setIsAddSuiteOpen] = useState(false);
   const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
+  const [isInvitesOpen, setIsInvitesOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Tab dynamic data states
@@ -316,6 +318,7 @@ export const App: React.FC = () => {
         onAddSuite={() => setIsAddSuiteOpen(true)}
         onDeleteSite={handleDeleteSite}
         onOpenUserMgmt={() => setIsUserMgmtOpen(true)}
+        onOpenInvites={() => setIsInvitesOpen(true)}
         currentUser={currentUser}
         onLogout={handleLogout}
       />
@@ -432,6 +435,11 @@ export const App: React.FC = () => {
         isOpen={isUserMgmtOpen}
         onClose={() => setIsUserMgmtOpen(false)}
         currentUser={currentUser}
+      />
+
+      <InvitationsModal
+        isOpen={isInvitesOpen}
+        onClose={() => setIsInvitesOpen(false)}
       />
 
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
