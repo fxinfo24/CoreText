@@ -1,5 +1,8 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.database import Base, engine, SessionLocal
+from app import init_db as _init_db
 from app.routers import (
     auth,
     sites,
@@ -15,10 +18,22 @@ from app.routers import (
     chat
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Runs on every serverless cold start (Vercel @vercel/python does NOT execute
+    # run.py, so schema creation/seeding must happen here). Idempotent.
+    try:
+        _init_db.init_database()
+    except Exception as e:  # never block startup on a transient DB error
+        print(f"[startup] init_database skipped/failed: {e}")
+    yield
+
+
 app = FastAPI(
     title="CoreText Executive OS Core API",
     description="Fully Predictive Shareholder Asset Compounding Backend",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # CORS configuration to allow React local and preview proxy access
