@@ -22,7 +22,7 @@ from app.security import (
 )
 from app.blocklist import is_disposable_email
 
-router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # --- Minimal in-memory rate limiter for registration -------------------------
 # Keyed by client IP. 5 attempts / 10 minutes. Sufficient to blunt scripted
