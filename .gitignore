@@ -25,3 +25,6 @@ env/
 # Temp
 *.log
 tmp/
+
+# Local working docs (not part of the shipped project)
+implementation_plan.md
