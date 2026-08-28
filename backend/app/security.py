@@ -131,6 +131,49 @@ def verify_totp(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
+def generate_backup_codes(n: int = 10) -> list[str]:
+    """Return n random recovery codes like 'XXXX-XXXX' (plaintext; hash before storing)."""
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no ambiguous chars (0/O,1/I)
+    codes = []
+    for _ in range(n):
+        part1 = "".join(secrets.choice(alphabet) for _ in range(4))
+        part2 = "".join(secrets.choice(alphabet) for _ in range(4))
+        codes.append(f"{part1}-{part2}")
+    return codes
+
+
+def hash_backup_codes(codes: list[str]) -> str:
+    """Bcrypt-hash each code; return a JSON-encoded list of hashes for storage."""
+    hashes = [pwd_context.hash(c) for c in codes]
+    return json.dumps(hashes)
+
+
+def verify_backup_code(stored_json: Optional[str], code: str) -> tuple[bool, Optional[str]]:
+    """If `code` matches one unused backup code, return (True, updated_json_with_code_removed).
+
+    Backup codes are single-use: a matched code is consumed (dropped) so it cannot be
+    reused. Returns (False, None) if no match or nothing stored.
+    """
+    if not stored_json:
+        return False, None
+    try:
+        hashes = json.loads(stored_json)
+    except Exception:
+        return False, None
+    norm = code.strip().upper()
+    remaining = []
+    matched = False
+    for h in hashes:
+        if not matched and pwd_context.verify(norm, h):
+            matched = True
+            continue  # consume this code
+        remaining.append(h)
+    if not matched:
+        return False, None
+    return True, json.dumps(remaining)
+
+
 # --- Two-step login tokens ---------------------------------------------------
 def create_temp_token(user: models.DBUser) -> str:
     """Short-lived token proving password succeeded; 2FA code still required."""

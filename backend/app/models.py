@@ -17,6 +17,9 @@ class DBUser(Base):
     # TOTP 2FA: secret is stored ENCRYPTED (never plaintext). Empty when disabled.
     totp_secret = Column(Text, nullable=True, default=None)
     totp_enabled = Column(Boolean, default=False)
+    # One-time recovery codes (e.g. when the authenticator is lost). Stored as a
+    # JSON list of BCRYPT HASHES (never plaintext). Consumed one-by-one on use.
+    totp_backup_codes = Column(Text, nullable=True, default=None)
 
 
 class DBInviteCode(Base):

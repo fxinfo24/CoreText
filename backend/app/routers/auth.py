@@ -35,6 +35,9 @@ from app.security import (
     decrypt_secret,
     create_temp_token,
     decode_temp_token,
+    generate_backup_codes,
+    hash_backup_codes,
+    verify_backup_code,
     _fernet,
     TOTP_ISSUER,
 )
@@ -182,12 +185,20 @@ def login(req: schemas.LoginRequest, db: Session = Depends(get_db), request: Req
                 totp_required=True,
                 temp_token=create_temp_token(user),
             )
-        # Validate the provided code against the (decrypted) secret.
+        # Validate the provided code against the (decrypted) secret, OR a backup code.
         try:
             secret = decrypt_secret(user.totp_secret) if user.totp_secret else ""
         except Exception:
             secret = ""
-        if not secret or not verify_totp(secret, req.totp_code):
+        code_ok = bool(secret) and verify_totp(secret, req.totp_code)
+        if not code_ok:
+            # Fall back to a one-time recovery code (consumed on success).
+            ok, remaining = verify_backup_code(user.totp_backup_codes, req.totp_code)
+            if ok:
+                user.totp_backup_codes = remaining
+                db.commit()
+                code_ok = True
+        if not code_ok:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid two-factor code",
@@ -228,12 +239,17 @@ def tfa_setup(current_user: models.DBUser = Depends(get_current_user), db: Sessi
     )
 
 
-@router.post("/2fa/enable", response_model=schemas.UserPublic)
+@router.post("/2fa/enable", response_model=schemas.TwoFactorBackupCodesResponse)
 def tfa_enable(
     req: schemas.TwoFactorEnableRequest,
     current_user: models.DBUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Confirm the TOTP code, activate 2FA, and return one-time backup codes.
+
+    The backup codes are shown EXACTLY ONCE (plaintext here); afterwards only
+    their bcrypt hashes remain in the DB. Store them somewhere safe.
+    """
     user = db.query(models.DBUser).filter(models.DBUser.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -246,11 +262,28 @@ def tfa_enable(
     if not verify_totp(secret, req.code):
         raise HTTPException(status_code=400, detail="Invalid code; 2FA not enabled")
     user.totp_enabled = True
+    # Generate one-time recovery codes (hashed at rest; plaintext returned ONCE).
+    codes = generate_backup_codes(10)
+    user.totp_backup_codes = hash_backup_codes(codes)
     db.commit()
-    # Read back from a fresh session so the response reflects the committed row
-    # (avoids stale ORM snapshot under SQLite connection-pool semantics).
-    fresh = SessionLocal().query(models.DBUser).filter(models.DBUser.id == user.id).first()
-    return _to_public(fresh)
+    return schemas.TwoFactorBackupCodesResponse(backup_codes=codes)
+
+
+@router.post("/2fa/backup-codes", response_model=schemas.TwoFactorBackupCodesResponse)
+def tfa_regen_backup_codes(
+    current_user: models.DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Regenerate backup codes. Old codes are invalidated. New codes shown ONCE."""
+    user = db.query(models.DBUser).filter(models.DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.totp_enabled:
+        raise HTTPException(status_code=400, detail="Enable 2FA before generating backup codes")
+    codes = generate_backup_codes(10)
+    user.totp_backup_codes = hash_backup_codes(codes)
+    db.commit()
+    return schemas.TwoFactorBackupCodesResponse(backup_codes=codes)
 
 
 @router.post("/2fa/disable", response_model=schemas.UserPublic)
@@ -262,6 +295,7 @@ def tfa_disable(current_user: models.DBUser = Depends(get_current_user), db: Ses
         raise HTTPException(status_code=400, detail="2FA is not enabled on this account")
     user.totp_enabled = False
     user.totp_secret = None
+    user.totp_backup_codes = None
     db.commit()
     fresh = SessionLocal().query(models.DBUser).filter(models.DBUser.id == user.id).first()
     return _to_public(fresh)
@@ -280,7 +314,15 @@ def tfa_verify(req: schemas.TwoFactorConfirmRequest, db: Session = Depends(get_d
         secret = decrypt_secret(user.totp_secret) if user.totp_secret else ""
     except Exception:
         secret = ""
-    if not secret or not verify_totp(secret, req.code):
+    code_ok = bool(secret) and verify_totp(secret, req.code)
+    if not code_ok:
+        # Fall back to a one-time recovery code (consumed on success).
+        ok, remaining = verify_backup_code(user.totp_backup_codes, req.code)
+        if ok:
+            user.totp_backup_codes = remaining
+            db.commit()
+            code_ok = True
+    if not code_ok:
         raise HTTPException(status_code=401, detail="Invalid two-factor code")
     return schemas.LoginResponse(access_token=create_access_token(user))
 
@@ -470,10 +512,19 @@ def revoke_invite(
 
 
 def _to_public(u: models.DBUser) -> schemas.UserPublic:
+    remaining = 0
+    if u.totp_backup_codes:
+        try:
+            import json as _json
+            remaining = len(_json.loads(u.totp_backup_codes))
+        except Exception:
+            remaining = 0
     return schemas.UserPublic(
         id=u.id,
         email=u.email,
         full_name=u.full_name,
         role=u.role,
         is_active=u.is_active,
+        totp_enabled=bool(u.totp_enabled),
+        backup_codes_remaining=remaining,
     )

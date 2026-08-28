@@ -25,6 +25,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   const [tfaError, setTfaError] = useState<string | null>(null);
   const [tfaSetup, setTfaSetup] = useState<{ secret: string; otpauth_uri: string; issuer: string } | null>(null);
   const [tfaCode, setTfaCode] = useState('');
+  // One-time backup / recovery codes, shown EXACTLY ONCE by the backend.
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [codesCopied, setCodesCopied] = useState(false);
 
   const totpEnabled = !!currentUser?.totp_enabled;
 
@@ -45,12 +48,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
     setTfaError(null);
     setTfaBusy(true);
     try {
-      await api.enableTwoFactor(tfaCode);
+      const res = await api.enableTwoFactor(tfaCode);
       setTfaSetup(null);
       setTfaCode('');
-      // Refresh current user so the badge updates.
-      await api.getCurrentUser();
-      window.location.reload();
+      // The backend returns the one-time recovery codes ONLY here — show them
+      // once so the owner can save them before the page refreshes.
+      setBackupCodes(res.backup_codes || []);
+      setCodesCopied(false);
     } catch (e: any) {
       setTfaError(e?.response?.data?.detail || 'Invalid code');
     } finally {
@@ -58,11 +62,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
     }
   };
 
+  const regenBackupCodes = async () => {
+    setTfaError(null);
+    setTfaBusy(true);
+    try {
+      const res = await api.regenerateBackupCodes();
+      setBackupCodes(res.backup_codes || []);
+      setCodesCopied(false);
+    } catch (e: any) {
+      setTfaError(e?.response?.data?.detail || 'Failed to regenerate backup codes');
+    } finally {
+      setTfaBusy(false);
+    }
+  };
+
+  const copyBackupCodes = async () => {
+    if (!backupCodes) return;
+    try {
+      await navigator.clipboard.writeText(backupCodes.join('\n'));
+      setCodesCopied(true);
+    } catch {
+      setCodesCopied(false);
+    }
+  };
+
+  const ackBackupCodes = () => {
+    // Codes are saved by the owner; refresh so the UI reflects the enabled state.
+    setBackupCodes(null);
+    setCodesCopied(false);
+    window.location.reload();
+  };
+
   const disable2FA = async () => {
     setTfaError(null);
     setTfaBusy(true);
     try {
       await api.disableTwoFactor();
+      setBackupCodes(null);
+      setCodesCopied(false);
       window.location.reload();
     } catch (e: any) {
       setTfaError(e?.response?.data?.detail || 'Failed to disable 2FA');
@@ -221,16 +258,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                 {tfaError}
               </div>
             )}
-            {totpEnabled ? (
-              <div className="flex items-center justify-between bg-slate-950 border border-emerald-800/60 rounded-2xl px-4 py-3">
-                <span className="text-xs text-emerald-300 font-semibold">✓ Enabled — your account is protected by a TOTP code.</span>
-                <button
-                  onClick={disable2FA}
-                  disabled={tfaBusy}
-                  className="text-xs text-red-300 hover:text-red-200 border border-red-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
-                >
-                  Disable
-                </button>
+            {backupCodes && backupCodes.length > 0 ? (
+              <div className="bg-slate-950 border border-amber-600/50 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] text-amber-200 font-semibold">
+                  ⚠ SAVE THESE RECOVERY CODES NOW — they are shown only once.
+                  If you lose your authenticator app, one of these codes is the only way back in.
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {backupCodes.map((c) => (
+                    <code key={c} className="text-[11px] font-mono text-amber-100 bg-slate-900 rounded-lg px-2 py-1.5">
+                      {c}
+                    </code>
+                  ))}
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={copyBackupCodes}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-2 rounded-xl"
+                  >
+                    {codesCopied ? '✓ Copied' : 'Copy all'}
+                  </button>
+                  <button
+                    onClick={ackBackupCodes}
+                    className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs py-2 rounded-xl"
+                  >
+                    I saved them — done
+                  </button>
+                </div>
+              </div>
+            ) : totpEnabled ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between bg-slate-950 border border-emerald-800/60 rounded-2xl px-4 py-3">
+                  <span className="text-xs text-emerald-300 font-semibold">
+                    ✓ Enabled — your account is protected by a TOTP code.
+                    {typeof currentUser?.backup_codes_remaining === 'number' && (
+                      <span className="block text-[10px] text-slate-400 mt-0.5">
+                        {currentUser.backup_codes_remaining} unused recovery code{currentUser.backup_codes_remaining === 1 ? '' : 's'} remaining.
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex space-x-2 shrink-0">
+                    <button
+                      onClick={regenBackupCodes}
+                      disabled={tfaBusy}
+                      className="text-xs text-amber-300 hover:text-amber-200 border border-amber-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
+                    >
+                      New recovery codes
+                    </button>
+                    <button
+                      onClick={disable2FA}
+                      disabled={tfaBusy}
+                      className="text-xs text-red-300 hover:text-red-200 border border-red-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
+                    >
+                      Disable
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : tfaSetup ? (
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">

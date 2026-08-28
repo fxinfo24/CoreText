@@ -77,8 +77,13 @@ export const setupTwoFactor = async (): Promise<TwoFactorSetup> => {
   return res.data;
 };
 
-export const enableTwoFactor = async (code: string): Promise<T.User> => {
-  const res = await apiClient.post<T.User>('/api/auth/2fa/enable', { code });
+export const enableTwoFactor = async (code: string): Promise<{ backup_codes: string[] }> => {
+  const res = await apiClient.post<{ backup_codes: string[] }>('/api/auth/2fa/enable', { code });
+  return res.data;
+};
+
+export const regenerateBackupCodes = async (): Promise<{ backup_codes: string[] }> => {
+  const res = await apiClient.post<{ backup_codes: string[] }>('/api/auth/2fa/backup-codes');
   return res.data;
 };
 

@@ -205,6 +205,8 @@ def main():
         code = _pyotp.TOTP(secret).now()
         en = client.post("/auth/2fa/enable", json={"code": code}, headers=H)
         check("2fa enable -> 200", en.status_code == 200, str(en.status_code))
+        bk = en.json().get("backup_codes") or []
+        check("2fa enable returns 10 backup codes", len(bk) == 10, f"n={len(bk)}")
         # Login must now require a second factor (no straight token).
         lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
         lj = lr.json()
@@ -218,6 +220,30 @@ def main():
         good = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": _pyotp.TOTP(secret).now()})
         check("2fa: correct code -> token", good.status_code == 200 and bool(good.json().get("access_token")),
               str(good.status_code))
+        # A backup code also logs you in, and is single-use.
+        lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        tt = lr.json().get("temp_token")
+        vb = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": bk[0]})
+        check("2fa: backup code -> token", vb.status_code == 200 and bool(vb.json().get("access_token")),
+              str(vb.status_code))
+        lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        tt = lr.json().get("temp_token")
+        vb2 = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": bk[0]})
+        check("2fa: backup code single-use (reuse -> 401)", vb2.status_code == 401, str(vb2.status_code))
+        # Regenerating invalidates the old batch.
+        rg = client.post("/auth/2fa/backup-codes", headers=H)
+        check("2fa regenerate -> 10 new codes", rg.status_code == 200 and len((rg.json().get("backup_codes") or [])) == 10,
+              str(rg.status_code))
+        lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        tt = lr.json().get("temp_token")
+        vold = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": bk[1]})
+        check("2fa: old backup code invalid after regen", vold.status_code == 401, str(vold.status_code))
+        nk = (rg.json().get("backup_codes") or [])
+        lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        tt = lr.json().get("temp_token")
+        vnew = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": nk[0]})
+        check("2fa: new backup code works", vnew.status_code == 200 and bool(vnew.json().get("access_token")),
+              str(vnew.status_code))
         # Disable 2FA again so the account returns to single-factor.
         dis = client.post("/auth/2fa/disable", headers=H)
         check("2fa disable -> 200", dis.status_code == 200, str(dis.status_code))

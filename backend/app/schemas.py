@@ -17,6 +17,8 @@ class UserPublic(BaseModel):
     role: str = "viewer"
     is_active: bool = True
     totp_enabled: bool = False
+    # Unused one-time recovery codes left (0 when 2FA off / none generated).
+    backup_codes_remaining: int = 0
 
 class LoginRequest(BaseModel):
     email: str
@@ -42,6 +44,10 @@ class TwoFactorVerifyRequest(BaseModel):
 
 class TwoFactorEnableRequest(BaseModel):
     code: str             # must match current pending secret
+
+
+class TwoFactorBackupCodesResponse(BaseModel):
+    backup_codes: list[str]   # plaintext, shown ONCE — store somewhere safe
 
 class TwoFactorConfirmRequest(BaseModel):
     temp_token: str

@@ -242,6 +242,8 @@ export interface User {
   role: string;
   is_active: boolean;
   totp_enabled: boolean;
+  /** Unused one-time recovery codes left (0 when 2FA off / none generated). */
+  backup_codes_remaining?: number;
 }
 
 export interface LoginRequest {
