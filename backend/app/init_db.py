@@ -117,12 +117,21 @@ def init_database():
     # --- Guarantee a super-admin exists (upgrade path for old 'admin' accounts) ---
     _ensure_owner(db)
 
-    # Check if already seeded
-    if db.query(models.DBSite).first():
+    # Idempotent seeding: (re)seed the demo "Shareholder Asset Compounding
+    # Suite" only when it is absent. This restores the demo assets on a
+    # fresh or partially-cleared database without wiping any real sites
+    # the owner may have added. The canonical demo site id is site_fintech.
+    demo_present = (
+        db.query(models.DBSite)
+        .filter(models.DBSite.id == "site_fintech")
+        .first()
+        is not None
+    )
+    if demo_present:
         db.close()
         return
 
-    print("Seeding SQLite Database with CoreText Executive OS datasets...")
+    print("Seeding CoreText Executive OS demo dataset (shareholder suites + signals)...")
 
     # Seed User Settings
     settings = models.DBUserSettings(
