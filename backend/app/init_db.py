@@ -68,6 +68,18 @@ def _ensure_owner(db: Session):
         fallback.role = ROLE_OWNER
         db.commit()
         print(f"Promoted oldest admin to owner: {fallback.email}")
+        return
+    # 4) Last resort: if there is no admin at all, promote the oldest user of
+    #    any role so the instance is never orphaned without a super-admin.
+    any_user = (
+        db.query(models.DBUser)
+        .order_by(models.DBUser.created_at)
+        .first()
+    )
+    if any_user:
+        any_user.role = ROLE_OWNER
+        db.commit()
+        print(f"Promoted oldest user to owner (no admin found): {any_user.email}")
 
 def init_database():
     models.Base.metadata.create_all(bind=engine)
