@@ -15,6 +15,10 @@ def _seed_admin(db: Session):
     INITIAL_ADMIN_PASSWORD. If unset, falls back to a documented local-dev default.
     Never overwrites an existing account.
     """
+    # NOTE: This env account is seeded as the CONTENT role ('admin'), NOT owner.
+    # The super-admin (owner) is always the pinned OWNER_EMAIL account, enforced
+    # by _ensure_owner() below. Seeding this account as 'owner' would let it
+    # compete with (and block promotion of) the real pinned owner.
     email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@coretext.local").strip().lower()
     password = os.getenv("INITIAL_ADMIN_PASSWORD", "changeme123")
     existing = db.query(models.DBUser).filter(models.DBUser.email == email).first()
@@ -24,8 +28,8 @@ def _seed_admin(db: Session):
         id=uuid.uuid4().hex,
         email=email,
         hashed_password=hash_password(password),
-        full_name="CoreText Owner",
-        role="owner",
+        full_name="CoreText Content Admin",
+        role="admin",
     )
     db.add(admin)
     db.commit()
@@ -46,17 +50,35 @@ def _ensure_owner(db: Session):
     exist yet, promote the oldest admin account so the instance is never
     orphaned without a super-admin.
     """
-    # 1) If any owner already exists, nothing to do.
-    if db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first():
-        return
-    # 2) Promote a pinned owner email if present.
+    # 1) Always guarantee the pinned OWNER_EMAIL is the owner -- even if a
+    #    stale/competing owner exists (e.g. the env-seeded admin@coretext.local
+    #    was once owner). The pinned owner must never be demoted or shadowed.
     for email in OWNER_EMAILS:
         u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
-        if u:
+        if u and u.role != ROLE_OWNER:
             u.role = ROLE_OWNER
             db.commit()
-            print(f"Promoted existing account to owner: {email}")
-            return
+            print(f"Promoted pinned owner account: {email}")
+    # 1b) Demote any OTHER account that is still 'owner' so there is exactly one
+    #     super-admin (the pinned one). Stale competing owners become 'admin'.
+    for email in OWNER_EMAILS:
+        others = (
+            db.query(models.DBUser)
+            .filter(models.DBUser.role == ROLE_OWNER)
+            .filter(models.DBUser.email != email)
+            .all()
+        )
+        for o in others:
+            o.role = "admin"
+        if others:
+            db.commit()
+            print(f"Demoted {len(others)} competing owner account(s) to admin")
+    # 2) If a genuine owner now exists (pinned or otherwise), nothing else to do.
+    if db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first():
+        return
+    # 3) Otherwise promote the oldest admin so there's always a super-admin.
+    for email in OWNER_EMAILS:
+        pass
     # 3) Otherwise promote the oldest admin so there's always a super-admin.
     fallback = (
         db.query(models.DBUser)
