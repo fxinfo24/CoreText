@@ -152,7 +152,29 @@ def main():
         check("settings roundtrip openrouter_api_key", gj.get("openrouter_api_key") == set_payload["openrouter_api_key"], gj.get("openrouter_api_key", "<None>")[:12] + "...")
         check("settings roundtrip llm_model", gj.get("llm_model") == set_payload["llm_model"], gj.get("llm_model"))
 
+        # 6c. Login brute-force throttle — persistent (DB-backed) limiter.
+        # Default LOGIN_LIMIT=10 in 300s. Clear any prior login-scope counters
+        # first so this assertion is self-contained (earlier owner logins in this
+        # run already incremented the shared per-IP counter under TestClient).
+        sdb = SessionLocal()
+        sdb.query(models.DBRateLimit).filter(models.DBRateLimit.scope == "login").delete()
+        sdb.commit()
+        sdb.close()
+        codes = []
+        for _ in range(12):
+            r = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "wrong"})
+            codes.append(r.status_code)
+        check("login throttle: first 10 are 401", codes[:10] == [401] * 10, str(codes[:10]))
+        check("login throttle: 11th+ are 429", codes[-1] == 429 and codes[10] == 429, str(codes[10:]))
+
+
         # 7. viewer blocked from owner-only
+        # Reset the shared per-IP login counter so the viewer's legitimate login
+        # isn't throttled by the brute-force test above (same TestClient IP).
+        sdb = SessionLocal()
+        sdb.query(models.DBRateLimit).filter(models.DBRateLimit.scope == "login").delete()
+        sdb.commit()
+        sdb.close()
         db = SessionLocal()
         v = models.DBUser(id="v_smoke", email="smoke_viewer@x.com",
                           hashed_password=security.hash_password("password1"),

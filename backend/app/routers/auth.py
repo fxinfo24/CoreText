@@ -32,23 +32,47 @@ from app.blocklist import is_disposable_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# --- Minimal in-memory rate limiter for registration -------------------------
-# Keyed by client IP. 5 attempts / 10 minutes. Sufficient to blunt scripted
-# spam floods; swap for Redis in a horizontally-scaled deployment.
-_REG_ATTEMPTS: "defaultdict[str, list[float]]" = defaultdict(list)
+# --- Persistent (DB-backed) sliding-window rate limiter ----------------------
+# Replaces the old in-memory limiter, which (a) reset on every Vercel
+# deploy/cold-start and (b) was not shared across serverless instances. Now the
+# counter lives in Postgres, so limits hold across restarts and concurrent
+# functions. Applied to BOTH login (brute-force defense) and register (spam).
+from sqlalchemy import and_ as _and
+LOGIN_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
+LOGIN_WINDOW_SEC = int(os.getenv("LOGIN_RATE_WINDOW", "300"))
 REG_LIMIT = int(os.getenv("REGISTER_RATE_LIMIT", "5"))
 REG_WINDOW_SEC = int(os.getenv("REGISTER_RATE_WINDOW", "600"))
 
 
-def _reg_rate_ok(client_ip: str) -> bool:
+def _rate_ok(db: Session, scope: str, key: str, limit: int, window: int) -> bool:
+    """Sliding-window check: allow `limit` hits per `window` seconds per (scope, key).
+    Returns True if the request is permitted (and records the hit)."""
     now = time.time()
-    attempts = _REG_ATTEMPTS[client_ip]
-    # drop stale
-    _REG_ATTEMPTS[client_ip] = [t for t in attempts if now - t < REG_WINDOW_SEC]
-    if len(_REG_ATTEMPTS[client_ip]) >= REG_LIMIT:
+    row = (
+        db.query(models.DBRateLimit)
+        .filter(_and(models.DBRateLimit.scope == scope, models.DBRateLimit.key == key))
+        .first()
+    )
+    if row is None:
+        db.add(models.DBRateLimit(scope=scope, key=key, last_ts=now, count=1))
+        db.commit()
+        return True
+    if now - row.last_ts >= window:
+        # Window expired — reset the counter.
+        row.last_ts = now
+        row.count = 1
+        db.commit()
+        return True
+    if row.count >= limit:
         return False
-    _REG_ATTEMPTS[client_ip].append(now)
+    row.count += 1
+    row.last_ts = now
+    db.commit()
     return True
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if (request and request.client) else "unknown"
 
 
 def _norm_email(email: str) -> str:
@@ -67,8 +91,8 @@ def register(
     db: Session = Depends(get_db),
     request: Request = None,
 ):
-    client_ip = request.client.host if (request and request.client) else "unknown"
-    if not _reg_rate_ok(client_ip):
+    client_ip = _client_ip(request)
+    if not _rate_ok(db, "register", client_ip, REG_LIMIT, REG_WINDOW_SEC):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many registration attempts. Try again later.",
@@ -125,7 +149,14 @@ def register(
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(req: schemas.LoginRequest, db: Session = Depends(get_db)):
+def login(req: schemas.LoginRequest, db: Session = Depends(get_db), request: Request = None):
+    # Brute-force defense: throttle repeated login attempts per client IP.
+    client_ip = _client_ip(request)
+    if not _rate_ok(db, "login", client_ip, LOGIN_LIMIT, LOGIN_WINDOW_SEC):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Slow down and try again shortly.",
+        )
     email = _norm_email(req.email)
     user = authenticate(db, email, req.password)
     if not user:

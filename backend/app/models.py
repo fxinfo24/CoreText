@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
@@ -33,6 +33,18 @@ class DBInviteCode(Base):
     used_at = Column(String, nullable=True)
     revoked = Column(Boolean, default=False)
     revoked_at = Column(String, nullable=True)
+
+
+class DBRateLimit(Base):
+    """Persistent sliding-window rate-limit counters (replaces the old in-memory
+    limiter that reset on every Vercel deploy/cold-start and was not shared across
+    serverless instances). Keyed by (scope, key) e.g. ('login', '<ip>')."""
+    __tablename__ = "rate_limits"
+    id = Column(Integer, primary_key=True, index=True)
+    scope = Column(String, nullable=False, index=True)        # 'login' | 'register'
+    key = Column(String, nullable=False, index=True)          # client IP (or other id)
+    last_ts = Column(Float, nullable=False)                   # epoch seconds of last hit
+    count = Column(Integer, nullable=False, default=0)        # hits within the window
 
 class DBUserSettings(Base):
     __tablename__ = "user_settings"
