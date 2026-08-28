@@ -81,10 +81,37 @@ def _ensure_owner(db: Session):
         db.commit()
         print(f"Promoted oldest user to owner (no admin found): {any_user.email}")
 
+
+def _migrate_settings_columns(db: Session):
+    """Add columns to user_settings introduced after first deploy.
+
+    create_all only creates tables, not new columns on existing tables, so
+    /api/settings 500s on DBs seeded before openrouter_api_key / llm_model.
+    Uses SQLAlchemy reflection (inspect) so it works on both Postgres (prod)
+    and SQLite (local dev) -- never raw information_schema SQL.
+    """
+    from sqlalchemy import inspect as _inspect, text as _text
+    inspector = _inspect(engine)
+    existing = set(col["name"] for col in inspector.get_columns("user_settings"))
+    needed = {"openrouter_api_key": "VARCHAR", "llm_model": "VARCHAR DEFAULT 'openai/gpt-4o-mini'"}
+    for col, col_type in needed.items():
+        if col not in existing:
+            try:
+                db.execute(_text(f"ALTER TABLE user_settings ADD COLUMN {col} {col_type}"))
+                db.commit()
+                print(f"Migrated user_settings: added column {col}")
+            except Exception as e:
+                db.rollback()
+                print(f"[init_db] column migration for {col} failed (continuing): {e}")
+
+
 def init_database():
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-    
+    # --- Migrate existing schemas (create_all does NOT add new columns) ---
+    # Older prod databases were seeded before openrouter_api_key / llm_model
+    # existed, causing /api/settings to 500. Add the columns if missing.
+    _migrate_settings_columns(db)
     # --- Seed initial owner user (idempotent) ---
     _seed_admin(db)
     # --- Guarantee a super-admin exists (upgrade path for old 'admin' accounts) ---
