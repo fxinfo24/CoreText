@@ -50,18 +50,19 @@ def _ensure_owner(db: Session):
     was created earlier as 'admin'), promote it. If none of the pinned emails
     exist yet, promote the oldest admin account so the instance is never
     orphaned without a super-admin.
+
+    Additionally: if OWNER_PASSWORD env is set, apply it to the owner account
+    on every boot so you can manage the password via Vercel env (no one-time-
+    setup-password mystery).
     """
-    # 1) Always guarantee the pinned OWNER_EMAIL is the owner -- even if a
-    #    stale/competing owner exists (e.g. the env-seeded admin@coretext.local
-    #    was once owner). The pinned owner must never be demoted or shadowed.
+    # 1) Always guarantee the pinned OWNER_EMAIL is the owner.
     for email in OWNER_EMAILS:
         u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
         if u and u.role != ROLE_OWNER:
             u.role = ROLE_OWNER
             db.commit()
             print(f"Promoted pinned owner account: {email}")
-    # 1b) Demote any OTHER account that is still 'owner' so there is exactly one
-    #     super-admin (the pinned one). Stale competing owners become 'admin'.
+    # 1b) Demote any OTHER account that is still 'owner'.
     for email in OWNER_EMAILS:
         others = (
             db.query(models.DBUser)
@@ -75,33 +76,38 @@ def _ensure_owner(db: Session):
             db.commit()
             print(f"Demoted {len(others)} competing owner account(s) to admin")
     # 2) If a genuine owner now exists (pinned or otherwise), nothing else to do.
-    if db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first():
-        return
-    # 3) GUARANTEE the pinned super-admin exists and is owner. Never fall back to
-    #    a non-pinned account (e.g. the dev default admin@coretext.local). If the
-    #    pinned email is absent (e.g. the Neon DB was reset), create it with a
-    #    one-time setup password so the instance can never be orphaned OR hijacked
-    #    by a default-credential account.
-    for email in OWNER_EMAILS:
-        u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
-        if u:
-            u.role = ROLE_OWNER
+    owner = db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first()
+    if not owner:
+        # 3) GUARANTEE the pinned super-admin exists.
+        for email in OWNER_EMAILS:
+            u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
+            if u:
+                u.role = ROLE_OWNER
+                db.commit()
+                print(f"Promoted pinned owner account: {email}")
+                owner = u
+                break
+            pw = secrets.token_urlsafe(12)
+            u = models.DBUser(
+                id=uuid.uuid4().hex,
+                email=email,
+                hashed_password=hash_password(pw),
+                full_name="CoreText Owner",
+                role=ROLE_OWNER,
+            )
+            db.add(u)
             db.commit()
-            print(f"Promoted pinned owner account: {email}")
-            return
-        pw = secrets.token_urlsafe(12)
-        u = models.DBUser(
-            id=uuid.uuid4().hex,
-            email=email,
-            hashed_password=hash_password(pw),
-            full_name="CoreText Owner",
-            role=ROLE_OWNER,
-        )
-        db.add(u)
+            print(f"Created pinned owner account {email} with one-time setup password: {pw}")
+            print(">>> To set a known password, add OWNER_PASSWORD to Vercel env and redeploy.")
+            owner = u
+            break
+    # 4) Apply a known password if the owner specified one via env (Vercel-friendly,
+    #    avoids the one-time-password problem).
+    owner_pw = os.getenv("OWNER_PASSWORD")
+    if owner and owner_pw:
+        owner.hashed_password = hash_password(owner_pw)
         db.commit()
-        print(f"Created pinned owner account {email} with one-time setup password: {pw}")
-        print(">>> CHANGE THIS PASSWORD IMMEDIATELY via User Management (Security > Profile).")
-        return
+        print(f"Owner password set from OWNER_PASSWORD env (email: {owner.email})")
 
 
 def _migrate_settings_columns(db: Session):
@@ -127,6 +133,33 @@ def _migrate_settings_columns(db: Session):
                 print(f"[init_db] column migration for {col} failed (continuing): {e}")
 
 
+def _migrate_user_2fa_columns(db: Session):
+    """Add 2FA (TOTP) columns to the users table introduced after first deploy.
+
+    create_all does NOT add new columns to existing tables, so the 2FA patch
+    (73fa4d8, ff0c5b5) broke login on any DB that was seeded before those
+    columns existed — PostgreSQL throws "column not found" -> 500.
+    Uses SQLAlchemy reflection (inspect) for Postgres + SQLite compatibility.
+    """
+    from sqlalchemy import inspect as _inspect, text as _text
+    inspector = _inspect(engine)
+    existing = set(col["name"] for col in inspector.get_columns("users"))
+    needed: dict[str, str] = {
+        "totp_secret": "TEXT",
+        "totp_enabled": "BOOLEAN DEFAULT FALSE",
+        "totp_backup_codes": "TEXT",
+    }
+    for col, col_type in needed.items():
+        if col not in existing:
+            try:
+                db.execute(_text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+                db.commit()
+                print(f"Migrated users: added column {col}")
+            except Exception as e:
+                db.rollback()
+                print(f"[init_db] column migration for {col} failed (continuing): {e}")
+
+
 def init_database():
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -134,6 +167,9 @@ def init_database():
     # Older prod databases were seeded before openrouter_api_key / llm_model
     # existed, causing /api/settings to 500. Add the columns if missing.
     _migrate_settings_columns(db)
+    # 2FA columns (totp_secret, totp_enabled, totp_backup_codes) were added in
+    # 73fa4d8/ff0c5b5 — they don't exist on pre-2FA DBs, causing login to 500.
+    _migrate_user_2fa_columns(db)
     # --- Seed initial owner user (idempotent) ---
     _seed_admin(db)
     # --- Guarantee a super-admin exists (upgrade path for old 'admin' accounts) ---
