@@ -139,24 +139,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full overflow-hidden flex flex-col shadow-2xl text-left">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl text-left">
         
         {/* Top Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-slate-800 px-6 py-5 flex items-center justify-between">
-          <div>
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-slate-800 px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between shrink-0">
+          <div className="min-w-0 mr-2">
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-0.5">
               CoreText Authentication & Posture
             </span>
-            <h3 className="text-xl font-bold text-white tracking-tight">Shareholder Command Preferences</h3>
+            <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">Shareholder Command Preferences</h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-all">
-            <X className="w-6 h-6" />
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-all shrink-0">
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <div className="p-6 space-y-5 text-xs">
+        {/* Form Body — scrollable on small screens */}
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto text-xs flex-1">
           <div>
             <label className="block font-bold text-slate-300 mb-1.5">Shareholder Director Name</label>
             <input
@@ -264,7 +264,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                   ⚠ SAVE THESE RECOVERY CODES NOW — they are shown only once.
                   If you lose your authenticator app, one of these codes is the only way back in.
                 </p>
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {backupCodes.map((c) => (
                     <code key={c} className="text-[11px] font-mono text-amber-100 bg-slate-900 rounded-lg px-2 py-1.5">
                       {c}
@@ -288,7 +288,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
               </div>
             ) : totpEnabled ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between bg-slate-950 border border-emerald-800/60 rounded-2xl px-4 py-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-slate-950 border border-emerald-800/60 rounded-2xl px-4 py-3 gap-2 sm:gap-0">
                   <span className="text-xs text-emerald-300 font-semibold">
                     ✓ Enabled — your account is protected by a TOTP code.
                     {typeof currentUser?.backup_codes_remaining === 'number' && (
@@ -297,18 +297,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                       </span>
                     )}
                   </span>
-                  <div className="flex space-x-2 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-1.5 sm:space-y-0 shrink-0">
                     <button
                       onClick={regenBackupCodes}
                       disabled={tfaBusy}
-                      className="text-xs text-amber-300 hover:text-amber-200 border border-amber-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
+                      className="text-xs text-amber-300 hover:text-amber-200 border border-amber-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50 text-center sm:text-left"
                     >
                       New recovery codes
                     </button>
                     <button
                       onClick={disable2FA}
                       disabled={tfaBusy}
-                      className="text-xs text-red-300 hover:text-red-200 border border-red-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
+                      className="text-xs text-red-300 hover:text-red-200 border border-red-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50 text-center sm:text-left"
                     >
                       Disable
                     </button>
@@ -316,14 +316,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                 </div>
               </div>
             ) : tfaSetup ? (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] text-slate-400">
-                  Scan this QR with Google Authenticator / 1Password / Authy, then enter the 6-digit code to confirm.
-                </p>
+                          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 sm:p-4 space-y-3">
+                            <p className="text-[11px] text-slate-400">
+                              Scan this QR with Google Authenticator / 1Password / Authy, then enter the 6-digit code to confirm.
+                            </p>
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(tfaSetup.otpauth_uri)}`}
                   alt="2FA QR code"
-                  className="w-40 h-40 rounded-xl bg-white mx-auto"
+                  className="w-32 h-32 sm:w-40 sm:h-40 rounded-xl bg-white mx-auto"
                 />
                 <div className="text-center">
                   <span className="text-[10px] text-slate-500">Manual key:</span>
@@ -358,7 +358,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-950 border-t border-slate-800 flex justify-end space-x-3">
+        <div className="p-4 sm:p-6 bg-slate-950 border-t border-slate-800 flex justify-end space-x-3 shrink-0">
           <button
             onClick={handleSave}
             disabled={saving}
