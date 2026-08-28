@@ -40,8 +40,8 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onSwitchTab }) => {
   return (
-    <aside className="w-full md:w-72 lg:w-80 shrink-0 bg-slate-950 border-r border-slate-800/80 flex flex-col justify-between p-4 space-y-6">
-      <nav className="space-y-1.5">
+    <aside className="w-full md:w-72 lg:w-80 shrink-0 bg-slate-950 border-r border-slate-800/80 flex flex-col p-4 space-y-6">
+      <nav className="space-y-1.5 overflow-y-auto flex-1 pr-1">
         <span className="block text-[11px] font-black text-slate-500 uppercase tracking-widest px-3 mb-3">
           Shareholder Modules
         </span>

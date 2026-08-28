@@ -214,9 +214,14 @@ export const App: React.FC = () => {
   };
 
   const handleResolveGeoDefect = async (auditId: string) => {
-    const res = await api.fixGeoAudit(auditId);
-    if (activeSite) await fetchTabData(activeSite.id, 'tab_geo');
-    setToastMessage(res.message);
+    try {
+      const res = await api.fixGeoAudit(auditId);
+      if (activeSite) await fetchTabData(activeSite.id, 'tab_geo');
+      setToastMessage(res.message || 'GEO defect resolved.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || 'Failed to resolve GEO defect.';
+      setToastMessage(detail);
+    }
   };
 
   const handleDeployDecayShield = async (decayId: string) => {
@@ -232,26 +237,41 @@ export const App: React.FC = () => {
   };
 
   const handleCaptureMonetizationGap = async (recId: string) => {
-    const res = await api.captureMonetizationGap(recId);
-    if (activeSite) {
-      await fetchTabData(activeSite.id, 'tab_monetization');
-      const updatedSite = await api.getSite(activeSite.id);
-      setActiveSite(updatedSite);
-      setSites(sites.map((s) => (s.id === updatedSite.id ? updatedSite : s)));
+    try {
+      const res = await api.captureMonetizationGap(recId);
+      if (activeSite) {
+        await fetchTabData(activeSite.id, 'tab_monetization');
+        const updatedSite = await api.getSite(activeSite.id);
+        setActiveSite(updatedSite);
+        setSites(sites.map((s) => (s.id === updatedSite.id ? updatedSite : s)));
+      }
+      setToastMessage(res.message || 'Monetization gap successfully captured and compounded!');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || 'Failed to capture monetization gap.';
+      setToastMessage(detail);
     }
-    setToastMessage(res.message);
   };
 
   const handleInterceptTrend = async (trendId: string) => {
-    const res = await api.interceptTrend(trendId);
-    if (activeSite) await fetchTabData(activeSite.id, 'tab_competitors');
-    setToastMessage(res.message);
+    try {
+      const res = await api.interceptTrend(trendId);
+      if (activeSite) await fetchTabData(activeSite.id, 'tab_competitors');
+      setToastMessage(res.message || 'Trend intercepted and queued for compounding.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || 'Failed to intercept trend.';
+      setToastMessage(detail);
+    }
   };
 
   const handleTransferHiveStrategy = async (hiveId: string) => {
-    const res = await api.transferHiveStrategy(hiveId);
-    await fetchTabData('', 'tab_hive');
-    setToastMessage(res.message);
+    try {
+      const res = await api.transferHiveStrategy(hiveId);
+      await fetchTabData('', 'tab_hive');
+      setToastMessage(res.message || 'Hive strategy transferred across portfolio.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || 'Failed to transfer hive strategy.';
+      setToastMessage(detail);
+    }
   };
 
   const handleSendChatMessage = async (text: string) => {
