@@ -1,105 +1,37 @@
 # HANDOVER.md — CoreText Executive OS
 
-**Date:** 2026-08-27
-**Status:** Authentication implemented + verified. Repo is in a clean, deployable state (uncommitted/pending push — see "Git state").
+**Date:** 2026-08-28
+**Status:** All auth hardening complete — DB-backed rate limiter, TOTP 2FA with encrypted secrets, single-use backup codes, FE side UX responsive. Full 33-check prod-parity smoke test passing. Docs rewritten (README, AGENTS, UserGuide).
 
 ## What was done in this session
-Implemented **multi-user JWT authentication** end-to-end (the previously unchecked roadmap item
-"Multi-user authentication (JWT + role-based access)"), plus anti-spam registration controls and
-full user management.
 
-### Backend
-- `backend/app/models.py` — added `DBUser` (email, hashed_password, full_name, role, is_active).
-- `backend/app/schemas.py` — `Token`, `TokenData`, `UserPublic`, `LoginRequest`, `RegisterRequest`,
-  `UserUpdate`.
-- `backend/app/security.py` (NEW) — JWT create/verify, bcrypt hashing (passlib, bcrypt<4.1),
-  `get_current_user`, `require_role`.
-- `backend/app/blocklist.py` (NEW) — disposable/temp-mail domain blocklist (~140 providers).
-- `backend/app/routers/auth.py` (NEW) — `POST /api/auth/login`, `POST /api/auth/register`
-  (temp-mail blocked + rate-limited), `GET /api/auth/me`, `POST /api/auth/logout`, and admin-only
-  `GET/POST /api/auth/users`, `PUT /api/auth/users/{id}`, `DELETE /api/auth/users/{id}`.
-- All existing routers (`sites`, `briefing`, `routing`, `portfolio`, `geo`, `decay`,
-  `monetization`, `competitors`, `hive`, `chat`) now require `Depends(get_current_user)`.
-- `backend/app/main.py` — includes auth router; added open `GET /api/health`.
-- `backend/app/init_db.py` — seeds first admin from `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD`
-  (dev default `admin@coretext.local` / `changeme123`); idempotent.
-- `backend/requirements.txt` — added `pyjwt`, `passlib`, `bcrypt<4.1`.
-- `backend/.venv` was REBUILT (the previous venv's interpreter symlink pointed at a deleted
-  uv-managed Python and was broken). New venv uses Python 3.12.
+This session systematically hardened authentication and then cleaned up the documentation.
 
-### Frontend
-- `src/types.ts` — `User`, `LoginRequest`, `AuthToken`, `UserUpdate`.
-- `src/api.ts` — token storage in `localStorage`, axios request interceptor (attaches bearer),
-  response interceptor (clears token on 401), `login`/`logout`/`getCurrentUser` + `listUsers`/
-  `createUser`/`updateUser`/`deleteUser`.
-- `src/components/Login.tsx` (NEW) — themed login screen.
-- `src/components/UserManagementModal.tsx` (NEW) — admin user directory (add/edit/delete) + viewer
-  self-profile edit; guards surfaced as errors.
-- `src/components/Header.tsx` — Users/Profile button + user chip + logout button.
-- `src/App.tsx` — auth gate (`<Login>` until authenticated), session restore from stored token,
-  logout resets state.
+### Auth hardening (in priority order)
 
-### Docs / metadata
-- `README.md` — roadmap item checked off; Security Notes rewritten to reflect real auth; local-run
-  instructions with env vars.
-- `AGENTS.md` (NEW) — agent/ contributor guide (architecture, auth specifics, gotchas).
-- `.gitignore` — `implementation_plan.md` ignored (earlier session).
+1. **DB-backed rate limiter** — replaced the old in-memory dict (per-process, reset on every Vercel deploy, only guarded `/auth/register`) with a Postgres `DBRateLimit` sliding-window limiter. Now applies to **both** login (10/300s) and register (5/600s). Survives restarts, shared across serverless instances. (`4dd3f2b`)
 
-## Verification performed (real, not claimed)
-- Backend imports clean; `npm run build` passes (tsc + vite).
-- Auth smoke test (TestClient): login 200, wrong pw 401, protected route 401 without token / 200
-  with token, `/api/health` open, register 200, bad token 401.
-- Feature test: temp-mail register → 422; real register → 200; viewer listing users → 403;
-  admin promote/demote/delete with last-admin & self-delete guards → correct 400/200; registration
-  rate limit → 429 on 6th attempt.
-- `init_db` seed with `INITIAL_ADMIN_EMAIL`/`PASSWORD` → admin created + demo sites; seeded admin
-  logs in; viewer blocked from `/api/auth/users` (403).
+2. **TOTP 2FA** — `DBUser.totp_secret` (Fernet-encrypted, never plaintext) + `totp_enabled`. Two-step login: password → `{totp_required, temp_token}` → POST `/auth/2fa/verify` (code) → JWT. Self-service setup/enable/disable. Settings UI with QR code. (`73fa4d8`)
 
-## What is NOT done / still gaps (current as of HEAD c335360)
-- **OpenRouter LLM**: key was entered via the Settings GUI and saved by the owner. Real LLM
-  path is wired (OpenRouter → OpenAI → Anthropic → template). Status to VERIFY: send a chat
-  message in the dashboard and confirm the reply is real model output, not templated text.
-- **`newuser@realmail.com`**: DELETED by the owner (was a test user). No promotion needed;
-  do not recreate unless the owner asks.
-- No email verification, password reset, or 2FA (deferred as premature for a 3-user invite-only product).
-- Registration rate limiter is in-memory (per-process) — not effective across serverless instances.
-- CORS is env-driven (`CORS_ORIGINS`), NOT `*`. Verified: configured origin echoed, foreign origin rejected.
-- No CI; `backend/test_api.py` exists but is not wired into a pipeline.
-- Neon MCP not required (backend uses Postgres via `DATABASE_URL`; SQLAlchemy manages schema).
+3. **Backup/recovery codes** — 10 codes generated on /2fa/enable, shown in plaintext **exactly once**, then only bcrypt hashes at rest. Single-use: matched code is consumed, reuse → 401. Regenerate endpoint invalidates old batch. (`ff0c5b5`)
 
-## Env vars required for production
-```
-INITIAL_ADMIN_EMAIL=...        # seed admin (first boot only)
-INITIAL_ADMIN_PASSWORD=...     # strong
-JWT_SECRET=...                 # >=32 bytes random
-DATABASE_URL=postgresql://...  # Neon (optional; defaults to SQLite)
-JWT_EXPIRE_MINUTES=1440        # optional
-REGISTER_RATE_LIMIT=5         # optional
-REGISTER_RATE_WINDOW=600      # optional
-INVITATION_CODES=CODE1,CODE2  # optional; valid invite codes for self-signup.
-                               # Empty/missing => self-registration disabled (admin-provisioned only).
-```
+4. **Login 500 fix** — the 2FA columns (`totp_secret`, `totp_enabled`, `totp_backup_codes`) were added to `DBUser` but `create_all` doesn't add columns to existing tables. Pre-2FA Neon DBs crashed with "column not found" on every login. Fixed with `_migrate_user_2fa_columns(db)` — same reflection-based ALTER TABLE pattern as `_migrate_settings_columns`. Also added `OWNER_PASSWORD` env so the owner can set a known password via Vercel (instead of the one-time random password from `_ensure_owner`). (`0a847ba`)
 
-## Git state
-Committed and pushed to `origin/main` (HEAD `d2c2a81`). Live at `coretext-eight.vercel.app`,
-deployed via Vercel MCP (auto-deploy from `main`). Env vars `JWT_SECRET` + `INITIAL_ADMIN_*`
-set in Vercel dashboard. Self-signup is gated by admin-generated invite codes (DB-backed);
-`INVITATION_CODES` env no longer used.
+5. **SettingsModal responsive** — Modal clipped on mobile (no scroll), overflowed on small screens, backup codes grid too wide. Fixed with `max-h-[90vh] + overflow-y-auto`, responsive padding (`p-4 sm:p-6`), `grid-cols-1 sm:grid-cols-2`, stacked buttons on mobile. (`4a226fb`)
 
-## Real LLM
-`ai_engine.py` calls **OpenRouter first (model from `DBUserSettings.llm_model`)**, then OpenAI
-(gpt-4o-mini), then Anthropic (claude-3-5-haiku), then falls back to templated output on
-missing key / call error (UI never breaks). Key source: `DBUserSettings.openrouter_api_key`
-(Settings GUI) or `OPENROUTER_API_KEY` env; OpenAI/Anthropic from `DBUserSettings` or env.
-**Current:** owner entered the OpenRouter key via the Settings GUI and saved it. VERIFY by
-sending a dashboard chat message — confirm the reply is real model output, not the template.
+### Docs rewrite
+- **README.md** — updated for Postgres/Vercel prod, 2FA, rate limiter, OpenRouter-first AI, full auth API reference, roadmap checked items.
+- **AGENTS.md** — auth flow diagram (two-step), 2FA endpoints, backup code lifecycle, DB-backed rate limit, `FERNET_KEY`/`OWNER_PASSWORD` env, SQLite staleness gotcha.
+- **UserGuide.md (new)** — comprehensive end-user docs covering all modules, 2FA walkthrough, troubleshooting table, FAQ.
 
-## One-line summary for the next session
-Auth + gated invite-code signup + real-LLM integration + Super-Admin owner tier + OpenRouter
-model-select + CORS hardening + public Landing page are all implemented and live.
-Open items: delete the leftover fallback admin `admin@coretext.local`/`changeme123` via User
-Management if still present (your real account is now auto-promoted to owner on boot);
-register rate-limit is in-memory (per-instance); no email-verify/2FA.
+| HEAD | What | Verification |
+|------|------|--------------|
+| `4dd3f2b` | DB-backed rate limiter (login+register) | 19/19 smoke |
+| `73fa4d8` | TOTP 2FA (encrypted secrets, two-step login) | 27/27 smoke |
+| `ff0c5b5` | Backup/recovery codes (single-use, bcrypt-hashed) | 33/33 smoke |
+| `0a847ba` | Login 500 fix + OWNER_PASSWORD env | 33/33 smoke |
+| `4a226fb` | SettingsModal responsive | 33/33 smoke + build |
+| `239c64d` | Docs rewrite (README, AGENTS, UserGuide) | — |
 
 - 2026-08-28 | HEAD 1b69161 | Super-Admin owner tier + OpenRouter model-select + CORS tighten + public Landing. RBAC: owner (fxinfo24@gmail.com pinned) > admin (content only) > viewer; user-mgmt/invites owner-only; owner email-pinned (no demote/delete). OpenRouter is preferred LLM with model dropdown in Settings. CORS now env-driven (verified live returns specific origin, not '*'). Public Landing page explains product to unauth visitors. init_db._ensure_owner guarantees a super-admin always exists. Local RBAC test passed: owner 200, admin /users 403, admin cannot demote owner 403, admin /sites 200. Frontend build clean. | OPEN: delete leftover fallback admin via User Management if still present; prod owner role now auto-promoted on boot; register rate-limit in-memory; no email-verify/2FA.
 - 2026-08-28 | HEAD 9f51be4 | FIX: Owner dashboard 500/'Loading Executive Briefing…' + Settings button dead. Root cause: prod user_settings table seeded before openrouter_api_key/llm_model columns existed; create_all does not add columns to existing tables → /api/settings 500 aborted bootOS. Added _migrate_settings_columns() (SQLAlchemy inspect, portable Postgres+SQLite) that ALTERs the missing columns on boot. Verified on a simulated old schema: columns added, /settings → 200 with new fields. Fallback admin@coretext.local deleted by owner; CORS_ORIGINS set in Vercel (verified foreign origin rejected). | NEXT: owner to promote newuser@realmail.com → admin in User Mgmt UI; paste OpenRouter key into Settings (openrouter_api_key) or OPENROUTER_API_KEY env (do NOT hardcode).
@@ -117,56 +49,50 @@ register rate-limit is in-memory (per-instance); no email-verify/2FA.
 - 2026-08-28 | HEAD ff0c5b5 | FEATURE: 2FA backup/recovery codes — 2FA is now safe to rely on. 10x XXXX-XXXX codes generated on /2fa/enable and returned IN PLAINTEXT EXACTLY ONCE (only bcrypt hashes stored in DBUser.totp_backup_codes); POST /2fa/backup-codes regenerates a batch (old invalid); login and /2fa/verify both accept a backup code as second factor and CONSUME it (single-use, reuse -> 401); /2fa/disable clears codes; /auth/me exposes backup_codes_remaining. Frontend: SettingsModal shows codes once post-enable with Copy-all + 'I saved them' ack (reload happens only after ack), 'New recovery codes' button + remaining-count badge on enabled panel. Smoke test +6 checks (enable returns 10, backup login works, reuse 401, regen invalidates old, new works) => 33/33 pass. | NEXT: set FERNET_KEY in Vercel (REQUIRED before 2FA can be enabled in prod — see 73fa4d8 note); in-memory chat throttle still open (free-tier only).
 - 2026-08-28 | HEAD 0a847ba | FIX: login 500 on prod + OWNER_PASSWORD env. ROOT CAUSE: 2FA columns (totp_secret, totp_enabled, totp_backup_codes) added to DBUser in 73fa4d8 but create_all doesn't add new columns to existing tables. The live Neon DB (from before 73fa4d8) lacked these columns -> PostgreSQL "column not found" -> 500 on ANY login. Same class of bug as the _migrate_settings_columns fix for user_settings. FIX: _migrate_user_2fa_columns(db) — reflection-based ALTER TABLE for the 3 columns, called from init_database(). ALSO added OWNER_PASSWORD env support in _ensure_owner: if set, the owner's password is applied on every boot, giving the owner a simple Vercel env knob (instead of the one-time random password that was previously generated and printed to Vercel logs). | PROD ACTION: set FERNET_KEY + OWNER_PASSWORD in Vercel env, then redeploy (push already triggered deploy).
 - 2026-08-28 | HEAD 4a226fb | FIX: SettingsModal not responsive on mobile/desktop browser. Modal had no scroll (overflow-hidden clipped content on small viewports), fixed p-6 padding ate 48px on 375px screens, backup codes grid-cols-2 overflowed, enabled-state buttons in flex-row fought for space, QR code fixed 160px, no max-height constraint. FIXED: max-h-[90vh] + overflow-y-auto on body, p-4 sm:p-6 responsive padding, grid-cols-1 sm:grid-cols-2 for backup codes, flex-col sm:flex-row for action buttons, w-32 h-32 sm:w-40 sm:h-40 for QR image, shrink-0 on all non-scrolling sections. | NEXT: in-memory chat throttle (free-tier only, low urgency).
+- 2026-08-28 | HEAD 239c64d | DOCS: rewritten README.md (Postgres/2FA/rate-limiter/OpenRouter-first API ref), updated AGENTS.md (two-step auth flow, 2FA endpoints, backup codes, DB rate-limit, FERNET_KEY/OWNER_PASSWORD env, SQLite-staleness gotcha), new UserGuide.md (400+ line end-user manual covering all modules + 2FA walkthrough + troubleshooting). | NEXT: in-memory chat throttle; email-verify / password reset (still open).
 
 ---
 
 ## Resume prompt (copy into a fresh Hermes session to continue)
 
-> **CoreText Executive OS — continue from HEAD `c335360` (main).**
+> **CoreText Executive OS — continue from HEAD `239c64d` (main).**
 >
 > Repo: `fxinfo24/CoreText`, local `/Volumes/ByteSmith/BuildLab/CoreText`, live at
 > `https://coretext-eight.vercel.app` (Vercel auto-deploys from `main`).
 >
-> **Start by invoking the `handoff` skill** for this repo — it reads live git state +
-> `AGENTS.md` + `HANDOVER.md` and emits a status brief. Trust those docs as source of truth
-> (`AGENTS.md` was regenerated from live code at `c335360`; `HANDOVER.md` has the full Status Ledger).
->
-> **Where we stopped (all code FIXED + PUSHED; pending prod confirmation):**
-> 1. Owner dashboard 500 ("Loading Executive Briefing…" + dead Settings) — fixed by
->    `_migrate_settings_columns()` in `backend/app/init_db.py` (SQLAlchemy inspect ALTERs
->    `openrouter_api_key`/`llm_model` onto `user_settings`).
-> 2. Demo "Shareholder Asset Compounding Suite" (3 sites) missing — fixed by idempotent
->    per-`site_fintech` demo seeding in `init_db.py`.
-> 3. Invitations + User Directory buttons vanished for the owner — fixed by owner-precedence:
->    `_seed_admin()` seeds env account as content `admin` (not owner); `_ensure_owner()` promotes
->    the pinned `OWNER_EMAIL` (`fxinfo24@gmail.com`) to owner even over a stale competing owner,
->    then demotes other owners to `admin`.
+> **What's been done (all verified + pushed):**
+> - DB-backed sliding-window rate limiter (login 10/300s, register 5/600s) — survives restarts, shared across serverless instances
+> - TOTP 2FA with Fernet-encrypted secrets (never plaintext in DB)
+> - Two-step login (password → 2FA code → JWT)
+> - 10 single-use backup/recovery codes (bcrypt-hashed at rest; shown exactly once on enable)
+> - Login 500 migration fix (`_migrate_user_2fa_columns`) for pre-2FA DBs
+> - `OWNER_PASSWORD` env var for setting the owner's password predictably
+> - Settings modal fully responsive (mobile scroll, adaptive grid/buttons)
+> - Docs rewritten: README.md, AGENTS.md, UserGuide.md (new — 400+ line user manual)
+> - 33-check prod-parity smoke test passing
 >
 > **RBAC:** `owner` (pinned `fxinfo24@gmail.com`) > `admin` (content only) > `viewer`.
-> Owner-only: user CRUD + invite management. `require_role` grants owner superuser passthrough.
-> Owner is protected from demote/delete.
+> Owner is superuser passthrough, protected from demote/delete.
+> `_ensure_owner()` guarantees pinned owner; `_seed_admin()` seeds content `admin` (NOT owner).
 >
-> **LLM:** `backend/app/ai_engine.py` calls OpenRouter (model from `DBUserSettings.llm_model`)
-> → OpenAI → Anthropic → template fallback. **The owner entered the OpenRouter key via the
-> Settings GUI and saved it** — VERIFY chat returns real (non-templated) model output.
-> ⚠️ A live key was pasted in an earlier chat and is compromised; the GUI-saved key is fine,
-> but any key that appeared in chat should be rotated in OpenRouter. Never hardcode secrets.
+> **2FA:** requires `FERNET_KEY` env (32-byte url-safe base64) in Vercel or `/auth/2fa/setup`
+> returns 503. Login auto-detects 2FA and prompts for code. Backup codes accepted as second factor,
+> single-use (reuse → 401). Regenerate via `/auth/2fa/backup-codes`.
 >
-> **CORS:** env-driven `CORS_ORIGINS` (not `*`).
+> **LLM:** `ai_engine.py` calls OpenRouter (model from `DBUserSettings.llm_model`) → OpenAI →
+> Anthropic → template. Errors surface in-chat with secrets redacted. **Owner verified real
+> model output** from nvidia/nemotron-3-ultra-550b-a55b:free on this deployment.
 >
-> **Known owner corrections:** `newuser@realmail.com` was DELETED — do NOT recreate or promote it.
->
-> **First actions this session:**
-> 1. Confirm prod state after any redeploy: `GET /api/auth/me` → `role: "owner"` for
->    `fxinfo24@gmail.com`; 3 demo suites + Invitations/User Directory buttons appear.
-> 2. If owner role still wrong on prod, debug `_ensure_owner`/`_seed_admin` against the live
->    Neon DB — do NOT reintroduce `admin@coretext.local` as owner.
-> 3. Verify OpenRouter: send a dashboard chat message; confirm the reply is real model output.
-> 4. Update `HANDOVER.md` Status Ledger after any change (self-improve loop).
+> **CORS:** env-driven `CORS_ORIGINS`, NOT `*`.
 >
 > **Hard rules:** Never hardcode secrets. Never reintroduce `CORS: *`. Never change `_seed_admin`
-> back to seeding `owner` (recreates the bug). `vercel.json` strips `/api`, so backend routes are
-> mounted at root (e.g. `/auth/login`, not `/api/auth/login`). Pyright `Column[str]` warnings in
-> `models.py`/`routers` are false positives — don't retype them.
+> back to seeding `owner` — it recreates the owner-precedence bug. `vercel.json` serves backend
+> under `/api` (routePrefix: "/api") — do NOT add `/api` to route strings. Pyright `Column[str]`
+> warnings in `models.py`/`routers` are false positives — don't retype them. Any API key pasted
+> in chat is compromised; use Settings UI or env vars.
 >
-> Report what you find and verify before claiming anything is fixed.
+> **First actions:**
+> 1. Read HANDOVER.md ledger (last entries) and AGENTS.md for full gotchas.
+> 2. If `FERNET_KEY` + `OWNER_PASSWORD` are set in Vercel env: verify login works.
+> 3. Run `cd backend && .venv/bin/python test_smoke_api.py` → expect 33/33 pass.
+> 4. Update HANDOVER.md Status Ledger after any change (self-improve loop).
