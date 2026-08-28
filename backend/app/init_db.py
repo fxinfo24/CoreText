@@ -4,13 +4,15 @@ import uuid
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal
 from app import models
-from app.security import hash_password
+from app.security import hash_password, OWNER_EMAILS, ROLE_OWNER
+
 
 def _seed_admin(db: Session):
-    """Create the first admin account from env vars (or a safe dev default).
+    """Create the first owner account from env vars (or a safe dev default).
 
-    Reads INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD. If unset, falls back to
-    a documented local-dev default so `run_coretext.sh` works out of the box.
+    The owner is the super-admin (pinned by OWNER_EMAIL, default fxinfo24@gmail.com)
+    and is the only role that can manage OTHER users. Reads INITIAL_ADMIN_EMAIL /
+    INITIAL_ADMIN_PASSWORD. If unset, falls back to a documented local-dev default.
     Never overwrites an existing account.
     """
     email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@coretext.local").strip().lower()
@@ -22,25 +24,59 @@ def _seed_admin(db: Session):
         id=uuid.uuid4().hex,
         email=email,
         hashed_password=hash_password(password),
-        full_name="CoreText Administrator",
-        role="admin",
+        full_name="CoreText Owner",
+        role="owner",
     )
     db.add(admin)
     db.commit()
     if os.getenv("INITIAL_ADMIN_EMAIL") is None:
         print(
-            "⚠️  Seeded DEV admin admin@coretext.local / changeme123 — "
+            "⚠️  Seeded DEV owner admin@coretext.local / changeme123 — "
             "set INITIAL_ADMIN_EMAIL + INITIAL_ADMIN_PASSWORD for production."
         )
     else:
-        print(f"Seeded admin account: {email}")
+        print(f"Seeded owner account: {email}")
+
+
+def _ensure_owner(db: Session):
+    """Guarantee at least one `owner`-role user exists (idempotent, safe upgrade).
+
+    If a user with a pinned OWNER_EMAIL already exists but isn't owner (e.g. it
+    was created earlier as 'admin'), promote it. If none of the pinned emails
+    exist yet, promote the oldest admin account so the instance is never
+    orphaned without a super-admin.
+    """
+    # 1) If any owner already exists, nothing to do.
+    if db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first():
+        return
+    # 2) Promote a pinned owner email if present.
+    for email in OWNER_EMAILS:
+        u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
+        if u:
+            u.role = ROLE_OWNER
+            db.commit()
+            print(f"Promoted existing account to owner: {email}")
+            return
+    # 3) Otherwise promote the oldest admin so there's always a super-admin.
+    fallback = (
+        db.query(models.DBUser)
+        .filter(models.DBUser.role == "admin")
+        .order_by(models.DBUser.created_at)
+        .first()
+    )
+    if fallback:
+        fallback.role = ROLE_OWNER
+        db.commit()
+        print(f"Promoted oldest admin to owner: {fallback.email}")
 
 def init_database():
     models.Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     
-    # --- Seed initial admin user (idempotent) ---
+    # --- Seed initial owner user (idempotent) ---
     _seed_admin(db)
+    # --- Guarantee a super-admin exists (upgrade path for old 'admin' accounts) ---
+    _ensure_owner(db)
 
     # Check if already seeded
     if db.query(models.DBSite).first():
@@ -55,6 +91,8 @@ def init_database():
         shareholder_posture="Aggressive Compounder",
         openai_api_key="",
         anthropic_api_key="",
+        openrouter_api_key="",
+        llm_model="openai/gpt-4o-mini",
         auto_execute_tier1=True,
         auto_execute_tier2=True,
         email_briefing_time="07:00 AM"

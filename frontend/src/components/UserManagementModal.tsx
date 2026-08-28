@@ -19,7 +19,7 @@ interface DraftUser {
 const emptyDraft: DraftUser = { email: '', full_name: '', role: 'viewer', password: '', is_active: true };
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClose, currentUser }) => {
-  const isAdmin = currentUser.role === 'admin';
+  const isOwner = currentUser.role === 'owner';
   const [users, setUsers] = useState<T.User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
   const [draft, setDraft] = useState<DraftUser>(emptyDraft);
 
   const load = async () => {
-    if (!isAdmin) return;
+    if (!isOwner) return;
     setLoading(true);
     try {
       setUsers(await api.listUsers());
@@ -109,7 +109,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
           <div>
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-0.5">CoreText Access Control</span>
-            <h3 className="text-lg font-bold text-white tracking-tight">{isAdmin ? 'Shareholder User Directory' : 'My Profile'}</h3>
+            <h3 className="text-lg font-bold text-white tracking-tight">{isOwner ? 'Shareholder User Directory' : 'My Profile'}</h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
         </div>
@@ -148,7 +148,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                     className="w-full rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
-              {isAdmin && editing !== currentUser.id && (
+              {isOwner && editing !== currentUser.id && (
                 <label className="flex items-center space-x-2 text-sm text-slate-300">
                   <input type="checkbox" checked={draft.is_active} onChange={(e) => setDraft({ ...draft, is_active: e.target.checked })} />
                   <span>Account active</span>
@@ -161,7 +161,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             </div>
           ) : (
             <>
-              {isAdmin && (
+              {isOwner && (
                 <button onClick={startNew} className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg font-semibold text-white text-sm">
                   + Add User
                 </button>
@@ -181,7 +181,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                         <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md border ${u.role === 'admin' ? 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10' : 'text-slate-400 border-slate-700 bg-slate-800/50'}`}>{u.role}</span>
                         <span className={`w-2 h-2 rounded-full ${u.is_active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
                         <button onClick={() => startEdit(u)} className="text-xs text-indigo-300 hover:text-indigo-200 font-semibold">Edit</button>
-                        {isAdmin && u.id !== currentUser.id && (
+                        {isOwner && u.id !== currentUser.id && (
                           <button onClick={() => remove(u)} className="text-xs text-red-400 hover:text-red-300 font-semibold">Delete</button>
                         )}
                       </div>
@@ -193,7 +193,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             </>
           )}
 
-          {!isAdmin && (
+          {!isOwner && (
             <button onClick={() => startEdit(currentUser)} className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg font-semibold text-white text-sm">
               Edit My Profile
             </button>

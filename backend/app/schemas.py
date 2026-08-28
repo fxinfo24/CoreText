@@ -14,7 +14,7 @@ class UserPublic(BaseModel):
     id: str
     email: str
     full_name: str = ""
-    role: str = "admin"
+    role: str = "viewer"
     is_active: bool = True
 
 class LoginRequest(BaseModel):
@@ -58,6 +58,8 @@ class UserSettings(BaseModel):
     shareholder_posture: str = "Aggressive Compounder"
     openai_api_key: Optional[str] = ""
     anthropic_api_key: Optional[str] = ""
+    openrouter_api_key: Optional[str] = ""
+    llm_model: str = "openai/gpt-4o-mini"
     auto_execute_tier1: bool = True
     auto_execute_tier2: bool = True
     email_briefing_time: str = "07:00 AM"

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, SessionLocal
@@ -36,12 +37,24 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS configuration to allow React local and preview proxy access
+# CORS: restrict to known origins (Vercel prod + preview + local dev).
+# Comma-separated CORS_ORIGINS env; falls back to the app's own Vercel domain + localhost.
+def _cors_origins():
+    env = os.getenv("CORS_ORIGINS", "").strip()
+    if env:
+        return [o.strip() for o in env.split(",") if o.strip()]
+    return [
+        "https://coretext-eight.vercel.app",
+        "https://coretext-eight-git-main-fxinfo24s-projects.vercel.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

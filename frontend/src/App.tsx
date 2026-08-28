@@ -6,6 +6,7 @@ import { AtomizeModal } from './components/AtomizeModal';
 import { AddSuiteModal } from './components/AddSuiteModal';
 import { Toast } from './components/Toast';
 import { Login } from './components/Login';
+import { Landing } from './components/Landing';
 import { UserManagementModal } from './components/UserManagementModal';
 import { InvitationsModal } from './components/InvitationsModal';
 
@@ -34,6 +35,7 @@ export const App: React.FC = () => {
   const [isAddSuiteOpen, setIsAddSuiteOpen] = useState(false);
   const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
   const [isInvitesOpen, setIsInvitesOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Tab dynamic data states
@@ -104,6 +106,7 @@ export const App: React.FC = () => {
     setSites([]);
     setActiveSite(null);
     setSettings(null);
+    setShowLogin(false);
   };
 
   const handleSelectSite = async (siteId: string) => {
@@ -305,7 +308,11 @@ export const App: React.FC = () => {
           Initializing secure session…
         </div>
       ) : !currentUser ? (
-        <Login onAuthenticated={handleLogin} />
+        showLogin ? (
+          <Login onAuthenticated={handleLogin} />
+        ) : (
+          <Landing onEnterApp={() => setShowLogin(true)} />
+        )
       ) : (
     <div className="min-h-screen flex flex-col bg-[#020617] text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
       

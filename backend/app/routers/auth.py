@@ -1,8 +1,9 @@
 """Authentication router: login, register, current-user, logout (stateless).
 
-Plus admin user-management: list / create / update / delete users.
-Self-registration is allowed but disposable (temp-mail) domains are blocked to
-reduce spam/bot signups. User-management mutations require the `admin` role.
+Plus owner/admin/viewer RBAC: `owner` (fxinfo24@gmail.com, pinned) is the only
+role that can manage OTHER users (list/create/update/delete) and invite codes.
+`admin` can manage content (shareholder suites) but NOT other users.
+`viewer` is read-only. Self-registration is invite-gated and temp-mail blocked.
 """
 import os
 import uuid
@@ -21,6 +22,11 @@ from app.security import (
     authenticate,
     get_current_user,
     require_role,
+    is_protected_owner,
+    ROLE_OWNER,
+    ROLE_ADMIN,
+    ROLE_VIEWER,
+    VALID_ROLES,
 )
 from app.blocklist import is_disposable_email
 
@@ -100,7 +106,7 @@ def register(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Password must be at least 8 characters",
         )
-    role = invite.role if invite.role in ("admin", "viewer") else "viewer"
+    role = invite.role if invite.role in VALID_ROLES else "viewer"
     user = models.DBUser(
         id=uuid.uuid4().hex,
         email=email,
@@ -141,16 +147,17 @@ def logout():
     return {"status": "ok"}
 
 
-# --- Admin user management ---------------------------------------------------
+# --- Super-Admin (owner) user management -------------------------------------
+# Only the `owner` role may manage OTHER users. `admin` manages content only.
 @router.get("/users", response_model=list[schemas.UserPublic])
-def list_users(admin: models.DBUser = Depends(require_role("admin")), db: Session = Depends(get_db)):
+def list_users(owner: models.DBUser = Depends(require_role("owner")), db: Session = Depends(get_db)):
     return [_to_public(u) for u in db.query(models.DBUser).order_by(models.DBUser.created_at).all()]
 
 
 @router.post("/users", response_model=schemas.UserPublic)
 def create_user(
     req: schemas.RegisterRequest,
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
     email = _norm_email(req.email)
@@ -163,7 +170,7 @@ def create_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
     if len(req.password) < 8:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password must be at least 8 characters")
-    role = req.role if req.role in ("admin", "viewer") else "viewer"
+    role = req.role if req.role in VALID_ROLES else "viewer"
     user = models.DBUser(
         id=uuid.uuid4().hex,
         email=email,
@@ -181,12 +188,18 @@ def create_user(
 def update_user(
     user_id: str,
     payload: schemas.UserUpdate,
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
     user = db.query(models.DBUser).filter(models.DBUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # The pinned owner can never be demoted, deactivated, or have its role changed.
+    if is_protected_owner(user.email):
+        if payload.role is not None and payload.role != "owner":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The owner account role is protected and cannot be changed")
+        if payload.is_active is False:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The owner account cannot be deactivated")
     if payload.email is not None:
         email = _norm_email(payload.email)
         if is_disposable_email(email):
@@ -198,23 +211,14 @@ def update_user(
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.role is not None:
-        if payload.role not in ("admin", "viewer"):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role must be 'admin' or 'viewer'")
-        # Prevent the last admin from being demoted/locked out
-        if user.role == "admin" and payload.role != "admin":
-            admin_count = db.query(models.DBUser).filter(models.DBUser.role == "admin").count()
-            if admin_count <= 1:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot remove the last admin account")
+        if payload.role not in VALID_ROLES:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="role must be 'owner', 'admin', or 'viewer'")
         user.role = payload.role
     if payload.password is not None:
         if len(payload.password) < 8:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password must be at least 8 characters")
         user.hashed_password = hash_password(payload.password)
     if payload.is_active is not None:
-        if not payload.is_active and user.role == "admin":
-            admin_count = db.query(models.DBUser).filter(models.DBUser.role == "admin", models.DBUser.is_active == True).count()
-            if admin_count <= 1:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate the last active admin")
         user.is_active = payload.is_active
     db.commit()
     db.refresh(user)
@@ -224,19 +228,17 @@ def update_user(
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user(
     user_id: str,
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
     user = db.query(models.DBUser).filter(models.DBUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    # Guardrails: never delete yourself, never delete the last active admin.
-    if user.id == admin.id:
+    # Guardrails: never delete yourself, never delete the pinned owner.
+    if user.id == owner.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account")
-    if user.role == "admin":
-        active_admins = db.query(models.DBUser).filter(models.DBUser.role == "admin", models.DBUser.is_active == True).count()
-        if active_admins <= 1:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the last active admin")
+    if is_protected_owner(user.email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The owner account cannot be deleted")
     db.delete(user)
     db.commit()
     return {"status": "success", "message": f"User {user.email} removed"}
@@ -252,17 +254,17 @@ def _gen_code() -> str:
 @router.post("/invites", response_model=list[schemas.InviteCodePublic])
 def create_invites(
     req: schemas.InviteGenerateRequest,
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
-    role = req.role if req.role in ("admin", "viewer") else "viewer"
+    role = req.role if req.role in VALID_ROLES else "viewer"
     created = []
     for _ in range(req.count):
         raw = _gen_code()
         code = models.DBInviteCode(
             code_hash=_hash_code(raw),
             role=role,
-            created_by=admin.id,
+            created_by=owner.id,
         )
         db.add(code)
         db.flush()
@@ -280,7 +282,7 @@ def create_invites(
 
 @router.get("/invites", response_model=list[schemas.InviteCodePublic])
 def list_invites(
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
     rows = (
@@ -307,7 +309,7 @@ def list_invites(
 @router.delete("/invites/{invite_id}", status_code=status.HTTP_200_OK)
 def revoke_invite(
     invite_id: str,
-    admin: models.DBUser = Depends(require_role("admin")),
+    owner: models.DBUser = Depends(require_role("owner")),
     db: Session = Depends(get_db),
 ):
     code = db.query(models.DBInviteCode).filter(models.DBInviteCode.id == invite_id).first()

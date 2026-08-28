@@ -14,7 +14,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   const [posture, setPosture] = useState(settings.shareholder_posture);
   const [openaiKey, setOpenaiKey] = useState(settings.openai_api_key || '');
   const [anthropicKey, setAnthropicKey] = useState(settings.anthropic_api_key || '');
+  const [openrouterKey, setOpenrouterKey] = useState(settings.openrouter_api_key || '');
+  const [llmModel, setLlmModel] = useState(settings.llm_model || 'openai/gpt-4o-mini');
   const [saving, setSaving] = useState(false);
+
+  // Popular OpenRouter model slugs (https://openrouter.ai/models). The field
+  // also accepts any custom slug typed by the owner.
+  const MODEL_OPTIONS = [
+    'openai/gpt-4o-mini',
+    'openai/gpt-4o',
+    'anthropic/claude-3.5-haiku',
+    'anthropic/claude-3.5-sonnet',
+    'google/gemini-flash-1.5',
+    'meta-llama/llama-3.1-70b-instruct',
+    'mistralai/mistral-large',
+    'deepseek/deepseek-chat',
+  ];
 
   if (!isOpen) return null;
 
@@ -26,6 +41,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
       shareholder_posture: posture,
       openai_api_key: openaiKey,
       anthropic_api_key: anthropicKey,
+      openrouter_api_key: openrouterKey,
+      llm_model: llmModel,
     });
     setSaving(false);
     onClose();
@@ -102,6 +119,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
               onChange={(e) => setAnthropicKey(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3.5 text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
             />
+          </div>
+
+          <div className="pt-2 border-t border-slate-800">
+            <label className="block font-bold text-emerald-300 mb-1.5 flex items-center">
+              <Key className="w-4 h-4 mr-1.5 text-emerald-400" />
+              OpenRouter API Key (Preferred)
+            </label>
+            <input
+              type="password"
+              placeholder="sk-or-..."
+              value={openrouterKey}
+              onChange={(e) => setOpenrouterKey(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3.5 text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+            />
+            <span className="block text-[10px] text-slate-500 mt-1.5 leading-snug">
+              OpenRouter routes to 100+ models with one key. If set, it is used for live chat & content atomization.
+            </span>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-300 mb-1.5">Active LLM Model</label>
+            <input
+              list="coretext-model-list"
+              value={llmModel}
+              onChange={(e) => setLlmModel(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3.5 text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+              placeholder="openai/gpt-4o-mini"
+            />
+            <datalist id="coretext-model-list">
+              {MODEL_OPTIONS.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+            <span className="block text-[10px] text-slate-500 mt-1.5 leading-snug">
+              Used when an OpenRouter key is set. Pick a preset or type any OpenRouter model slug.
+            </span>
           </div>
         </div>
 

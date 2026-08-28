@@ -41,6 +41,8 @@ class DBUserSettings(Base):
     shareholder_posture = Column(String, default="Aggressive Compounder")
     openai_api_key = Column(String, default="")
     anthropic_api_key = Column(String, default="")
+    openrouter_api_key = Column(String, default="")
+    llm_model = Column(String, default="openai/gpt-4o-mini")
     auto_execute_tier1 = Column(Boolean, default=True)
     auto_execute_tier2 = Column(Boolean, default=True)
     email_briefing_time = Column(String, default="07:00 AM")

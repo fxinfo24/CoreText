@@ -33,12 +33,16 @@ def send_chat_message(req: schemas.ChatRequest, db: Session = Depends(get_db), u
     settings = db.query(models.DBUserSettings).first()
     openai_key = settings.openai_api_key if settings else None
     anthropic_key = settings.anthropic_api_key if settings else None
+    openrouter_key = settings.openrouter_api_key if settings else None
+    llm_model = settings.llm_model if settings else "openai/gpt-4o-mini"
 
     reply_html = generate_chat_reply(
         site_name=site_name,
         user_query=req.message,
         openai_key=openai_key,
         anthropic_key=anthropic_key,
+        openrouter_key=openrouter_key,
+        llm_model=llm_model,
     )
     
     ai_msg = models.DBChatMessage(

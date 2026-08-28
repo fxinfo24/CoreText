@@ -40,11 +40,15 @@ def atomize_portfolio(req: AtomizeRequest, db: Session = Depends(get_db), user: 
     settings = db.query(models.DBUserSettings).first()
     openai_key = settings.openai_api_key if settings else None
     anthropic_key = settings.anthropic_api_key if settings else None
+    openrouter_key = settings.openrouter_api_key if settings else None
+    llm_model = settings.llm_model if settings else "openai/gpt-4o-mini"
 
     res = atomize_brief(
         core_title=item.title,
         cluster=item.cluster,
         openai_key=openai_key,
         anthropic_key=anthropic_key,
+        openrouter_key=openrouter_key,
+        llm_model=llm_model,
     )
     return res

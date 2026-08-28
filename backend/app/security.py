@@ -21,6 +21,28 @@ JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24h default
 
+# The Super-Admin (owner) is pinned by email. The owner is the only role that
+# can manage OTHER users' roles/accounts, and can never be demoted/deactivated/
+# deleted (see auth.py guards). Override via OWNER_EMAIL env (comma-list).
+OWNER_EMAILS = [
+    e.strip().lower()
+    for e in os.getenv("OWNER_EMAIL", "fxinfo24@gmail.com").split(",")
+    if e.strip()
+]
+
+ROLE_OWNER = "owner"
+ROLE_ADMIN = "admin"
+ROLE_VIEWER = "viewer"
+VALID_ROLES = (ROLE_OWNER, ROLE_ADMIN, ROLE_VIEWER)
+
+
+def is_owner(user) -> bool:
+    return bool(user) and user.role == ROLE_OWNER
+
+
+def is_protected_owner(email: str) -> bool:
+    return email.strip().lower() in OWNER_EMAILS
+
 # passlib bcrypt context (no native bcrypt import needed)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -91,10 +113,13 @@ def get_current_user(
 def require_role(*roles: str):
     """Dependency factory: restrict an endpoint to specific roles.
 
+    `owner` always satisfies any role requirement (superuser passthrough).
     Usage: `@router.delete("/x", dependencies=[Depends(require_role("admin"))])`
     """
 
     def checker(user: models.DBUser = Depends(get_current_user)) -> models.DBUser:
+        if is_owner(user):
+            return user
         if roles and user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

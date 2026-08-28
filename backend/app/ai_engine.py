@@ -5,13 +5,37 @@ from app import schemas
 
 
 # ---------------------------------------------------------------------------
-# Real LLM call (OpenAI primary, Anthropic fallback). Graceful degradation:
-# if no key is configured or the call fails, callers fall back to templates.
+# Real LLM call. Priority: OpenRouter (selected model) -> OpenAI -> Anthropic.
+# Graceful degradation: if no key is configured or the call fails, callers
+# fall back to templates.
 # ---------------------------------------------------------------------------
-def _resolve_keys(openai_key: Optional[str], anthropic_key: Optional[str]):
+def _resolve_keys(openai_key, anthropic_key, openrouter_key):
     oai = (openai_key or os.getenv("OPENAI_API_KEY") or "").strip()
     ant = (anthropic_key or os.getenv("ANTHROPIC_API_KEY") or "").strip()
-    return oai, ant
+    orr = (openrouter_key or os.getenv("OPENROUTER_API_KEY") or "").strip()
+    return oai, ant, orr
+
+
+def _chat_via_openrouter(api_key: str, model: str, system: str, user: str,
+                         max_tokens: int = 1200) -> Optional[str]:
+    try:
+        from openai import OpenAI
+        # OpenRouter is OpenAI-compatible; route through its base_url.
+        client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+        resp = client.chat.completions.create(
+            model=model or "openai/gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=max_tokens,
+            temperature=0.7,
+            timeout=30,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[ai_engine] OpenRouter call failed: {e}")
+        return None
 
 
 def _chat_via_openai(api_key: str, system: str, user: str, max_tokens: int = 1200) -> Optional[str]:
@@ -51,13 +75,20 @@ def _chat_via_anthropic(api_key: str, system: str, user: str, max_tokens: int = 
         return None
 
 
-def _llm_text(system: str, user: str, openai_key: Optional[str], anthropic_key: Optional[str],
-             max_tokens: int = 1200) -> Optional[str]:
-    oai, ant = _resolve_keys(openai_key, anthropic_key)
+def _llm_text(system: str, user: str, openai_key, anthropic_key, openrouter_key=None,
+             llm_model: str = "openai/gpt-4o-mini", max_tokens: int = 1200) -> Optional[str]:
+    oai, ant, orr = _resolve_keys(openai_key, anthropic_key, openrouter_key)
+    # 1) OpenRouter (selected model) — preferred when a key is set.
+    if orr:
+        out = _chat_via_openrouter(orr, llm_model, system, user, max_tokens)
+        if out:
+            return out
+    # 2) Direct OpenAI
     if oai:
         out = _chat_via_openai(oai, system, user, max_tokens)
         if out:
             return out
+    # 3) Anthropic
     if ant:
         out = _chat_via_anthropic(ant, system, user, max_tokens)
         if out:
@@ -75,12 +106,13 @@ SYSTEM_CHAT = (
 
 
 def generate_chat_reply(site_name: str, user_query: str,
-                        openai_key: str = None, anthropic_key: str = None) -> str:
-    # Try the real LLM first.
+                        openai_key: str = None, anthropic_key: str = None,
+                        openrouter_key: str = None, llm_model: str = "openai/gpt-4o-mini") -> str:
+    # Try the real LLM first (OpenRouter preferred).
     llm = _llm_text(
         SYSTEM_CHAT,
         f"Site: {site_name}\nShareholder question: {user_query}",
-        openai_key, anthropic_key,
+        openai_key, anthropic_key, openrouter_key, llm_model,
     )
     if llm:
         return llm
@@ -155,10 +187,11 @@ SYSTEM_ATOMIZE = (
 
 
 def atomize_brief(core_title: str, cluster: str,
-                  openai_key: str = None, anthropic_key: str = None) -> schemas.AtomizationResponse:
+                  openai_key: str = None, anthropic_key: str = None,
+                  openrouter_key: str = None, llm_model: str = "openai/gpt-4o-mini") -> schemas.AtomizationResponse:
     prefix = core_title.split(":")[0] if ":" in core_title else core_title
     prompt = f"Core asset title: {core_title}\nNiche cluster: {cluster}\nProduce the atomization blueprint."
-    llm = _llm_text(SYSTEM_ATOMIZE, prompt, openai_key, anthropic_key, max_tokens=2000)
+    llm = _llm_text(SYSTEM_ATOMIZE, prompt, openai_key, anthropic_key, openrouter_key, llm_model, max_tokens=2000)
     if llm:
         try:
             # Strip markdown fences if the model added them.

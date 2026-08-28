@@ -140,13 +140,13 @@ export const Header: React.FC<HeaderProps> = ({ sites, activeSite, onSelectSite,
         <button
           onClick={onOpenUserMgmt}
           className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white p-2.5 rounded-xl border border-slate-800/80 transition-all shadow flex items-center justify-center"
-          title={currentUser?.role === 'admin' ? 'User Directory' : 'My Profile'}
+          title={currentUser?.role === 'owner' ? 'User Directory' : 'My Profile'}
         >
           <Users className="w-5 h-5" />
         </button>
 
-        {/* Invitations Button (admin only) */}
-        {currentUser?.role === 'admin' && (
+        {/* Invitations Button (owner only) */}
+        {currentUser?.role === 'owner' && (
           <button
             onClick={onOpenInvites}
             className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white p-2.5 rounded-xl border border-slate-800/80 transition-all shadow flex items-center justify-center"

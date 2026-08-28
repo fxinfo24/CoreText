@@ -3,6 +3,8 @@ export interface UserSettings {
   shareholder_posture: string;
   openai_api_key?: string;
   anthropic_api_key?: string;
+  openrouter_api_key?: string;
+  llm_model: string;
   auto_execute_tier1: boolean;
   auto_execute_tier2: boolean;
   email_briefing_time: string;
