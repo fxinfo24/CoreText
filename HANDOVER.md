@@ -92,6 +92,10 @@ key / call error (UI never breaks). To activate real AI: paste a key in Settings
 gear) or set the env var, then redeploy.
 
 ## One-line summary for the next session
-Auth + gated invite-code signup + real-LLM integration are all implemented and live. Open items:
-delete the leftover fallback admin `admin@coretext.local`/`changeme123` via User Management;
-CORS is `*` (tighten for prod); register rate-limit is in-memory (per-instance); no email-verify/2FA.
+Auth + gated invite-code signup + real-LLM integration + Super-Admin owner tier + OpenRouter
+model-select + CORS hardening + public Landing page are all implemented and live.
+Open items: delete the leftover fallback admin `admin@coretext.local`/`changeme123` via User
+Management if still present (your real account is now auto-promoted to owner on boot);
+register rate-limit is in-memory (per-instance); no email-verify/2FA.
+
+- 2026-08-28 | HEAD 1b69161 | Super-Admin owner tier + OpenRouter model-select + CORS tighten + public Landing. RBAC: owner (fxinfo24@gmail.com pinned) > admin (content only) > viewer; user-mgmt/invites owner-only; owner email-pinned (no demote/delete). OpenRouter is preferred LLM with model dropdown in Settings. CORS now env-driven (verified live returns specific origin, not '*'). Public Landing page explains product to unauth visitors. init_db._ensure_owner guarantees a super-admin always exists. Local RBAC test passed: owner 200, admin /users 403, admin cannot demote owner 403, admin /sites 200. Frontend build clean. | OPEN: delete leftover fallback admin via User Management if still present; prod owner role now auto-promoted on boot; register rate-limit in-memory; no email-verify/2FA.
