@@ -1,82 +1,149 @@
-# AGENTS.md — CoreText (BuildLab/CoreText)
+# AGENTS.md — CoreText Executive OS
 
-> Operational guide for AI coding agents and contributors working on CoreText Executive OS.
-> Last updated: 2026-08-27. Stack: FastAPI + React 18 + Vite + TypeScript + Tailwind + SQLite/Postgres.
+> Agent/contributor guide. Source of truth for architecture, auth specifics, and
+> gotchas. Keep in sync with HANDOVER.md. Generated from live code on 2026-08-28
+> (HEAD 1d88dfc).
 
-## What this project is
-A full-stack "shareholder asset compounding" dashboard for managing content-portfolio sites
-(SEO/GEO intelligence, briefing, decay shields, monetization, competitors, chat). It is a
-**real, functional dashboard app** — NOT an autonomous money-maker despite the marketing copy.
+## 1. What this is
+CoreText Executive OS — a multi-tenant *executive briefing* web app: an owner/admins
+curate "Shareholder Asset Compounding Suites" (sites) with signals, briefings,
+portfolios, geo visibility, decay, monetization, competitors, and a chat assistant
+backed by a real LLM.
 
-## Hard facts an agent must know (read before changing anything)
-1. **Authentication IS implemented** (added 2026-08-27). All `/api` data routes require a JWT
-   bearer token. Public routes: `GET /`, `GET /api/health`, `POST /api/auth/login`,
-   `POST /api/auth/register`, `POST /api/auth/logout`, `GET /api/auth/me`.
-2. **The "AI" is templated, NOT wired to a real model.** `backend/app/ai_engine.py` builds replies
-   with string templates + keyword matching. The `openai_key`/`anthropic_key` params are accepted
-   but never used — no SDK call is made even though `openai`/`anthropic` are dependencies. Do not
-   claim the chat/atomize features are "real AI." To make them real, call the SDKs inside
-   `ai_engine.py` (the seam already exists).
-3. **Seeding**: `init_db.py` seeds 3 demo sites + an admin user. Admin email/password come from
-   `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` env (default `admin@coretext.local` /
-   `changeme123` for local dev only).
-4. **Route paths have NO `/api` prefix in code** (e.g. `/sites`). Vercel's `vercel.json`
-   `routePrefix: "/api"` adds it in production; the local Vite dev proxy also maps `/api`. Keep
-   frontend calls as `/api/...` and backend routes as `/...` — DO NOT "fix" this mismatch, it is
-   intentional for both environments.
-5. **DB**: `database.py` switches SQLite ↔ Postgres via `DATABASE_URL`. Tables are defined on
-   `models.Base` (NOT `database.Base` — `database.Base` is unused for table registration). Always
-   call `models.Base.metadata.create_all` (done in `init_db.py`).
+- **Backend:** FastAPI (Python 3.12 venv at `backend/.venv`), SQLAlchemy ORM.
+- **Frontend:** React + Vite + TypeScript (`frontend/`), axios, Tailwind.
+- **DB:** Postgres in prod (Neon, via `DATABASE_URL`); SQLite locally.
+- **Deploy:** Vercel, auto-deploys from `main`. `vercel.json` strips `/api` (so
+  routes are mounted at root, e.g. `/auth/login` not `/api/auth/login`).
+- **Repo:** `fxinfo24/CoreText` (branch `main`), local `/Volumes/ByteSmith/BuildLab/CoreText`.
 
-## Project layout
+## 2. Architecture
 ```
+frontend/ (React/Vite/TS)
+  App.tsx            auth gate: <Landing> (unauth) -> <Login> -> dashboard; bootOS()
+  api.ts             localStorage token, axios interceptor, all REST calls
+  types.ts           User, UserSettings (incl. openrouter_api_key, llm_model)
+  components/
+    Landing.tsx      public marketing page for unauthenticated visitors
+    Login.tsx        owner/admin/viewer login (+ invite-code sign-up toggle)
+    Header.tsx       nav; Users/Invitations buttons gated to owner
+    SettingsModal.tsx  OpenRouter key + model dropdown + director/brand settings
+    UserManagementModal.tsx  owner-only user directory (CRUD) / self profile
+    InvitationsModal.tsx     owner-only single-use invite-code generation
+
 backend/app/
-  main.py            # FastAPI app, CORS, router includes, /api/health
-  database.py        # engine + SessionLocal (SQLite/Postgres via DATABASE_URL)
-  models.py          # SQLAlchemy ORM tables (users, sites, ...)
-  schemas.py         # Pydantic request/response models (incl. auth)
-  security.py        # JWT create/verify, bcrypt hashing, get_current_user, require_role
-  blocklist.py       # disposable/temp-mail domain blocklist
-  init_db.py         # seed admin + demo data
+  main.py            FastAPI app, CORS (env-driven), lifespan -> init_database()
+  database.py        engine + SessionLocal from DATABASE_URL
+  models.py          DBUser, DBUserSettings, DBSite, + all domain tables
+  schemas.py         Pydantic request/response models
+  security.py        JWT, bcrypt, get_current_user, require_role, owner pinning
+  blocklist.py       ~140 disposable/temp-mail domains (registration blocked)
+  init_db.py         bootstrap: create_all + migrate cols + seed + ensure owner
+  ai_engine.py       LLM call: OpenRouter (selected model) -> OpenAI -> Anthropic -> template
   routers/
-    auth.py          # login/register/me/logout + admin user CRUD (THIS FILE IS AUTH)
-    sites.py, briefing.py, ...  # feature routers; each route Depends(get_current_user)
-frontend/src/
-  api.ts             # axios client + token storage + interceptors + auth fns
-  types.ts           # TS types (incl. User, LoginRequest, AuthToken, UserUpdate)
-  App.tsx            # auth gate (Login vs dashboard), session restore, logout
-  components/Login.tsx, UserManagementModal.tsx, Header.tsx
-  components/tabs/*  # the 10 feature tabs
+    auth.py          login/register/me/logout + owner-only user & invite CRUD
+    sites.py         sites, settings GET/POST (settings NOT role-gated)
+    briefing.py routing.py portfolio.py geo.py decay.py monetization.py
+    competitors.py hive.py chat.py nervous_system.py
 ```
 
-## Auth implementation specifics
-- **Tokens**: HS256 JWT, `JWT_SECRET` env (default `change-me-in-production` — MUST be overridden).
-  Expiry `JWT_EXPIRE_MINUTES` (default 1440 = 24h).
-- **Passwords**: bcrypt via `passlib`; `bcrypt` pinned to `<4.1` (passlib 1.7.x incompatibility with
-  bcrypt 4.1+). Hashing truncates to 72 bytes defensively.
-- **Roles (3-tier)**: `owner` (super-admin, pinned by `OWNER_EMAIL` default `fxinfo24@gmail.com`) > `admin` (content management only — can add/remove shareholder suites but NOT other users) > `viewer` (read-only). `require_role` grants owner superuser passthrough. User-management + invite endpoints are **owner-only**. The owner account is email-pinned: cannot be demoted, deactivated, or deleted.
-- **Self-registration**: invite-gated (single-use DB-backed codes generated by owner); blocks disposable/temp-mail domains (`blocklist.py`); rate-limited 5 / 10 min per IP (in-memory; swap for Redis if scaling).
-- **User management** (owner only): list/create/update/delete. Guards: cannot delete/disable the pinned owner; cannot delete your own account. `init_db._ensure_owner()` guarantees a super-admin always exists on boot (promotes pinned owner email, else oldest admin, else oldest user).
-- **Frontend**: token in `localStorage`; axios interceptor attaches `Authorization` and clears the token on 401. `App.tsx` shows public `<Landing>` for unauthenticated visitors, then `<Login>`. Header gates Users/Invitations behind owner; admins/viewers get "My Profile" only.
+### Auth flow
+- `POST /auth/login` → JWT (HS256, `JWT_SECRET`, 24h). Token stored in
+  `localStorage` (`api.ts`), attached via axios interceptor; cleared on 401.
+- All data routers depend on `get_current_user` (401 if missing/invalid/expired).
+- `POST /auth/register` requires a valid single-use invite code (SHA-256 hashed
+  at rest; the raw code is shown only at generation time). Temp-mail blocked;
+  in-memory rate limit (5 / 10 min per IP).
 
-## How to run locally
+### RBAC (3 tiers)
+| Role   | Can do                                                        |
+|--------|--------------------------------------------------------------|
+| owner  | Everything. **Only** role that manages OTHER users & invites. |
+| admin  | Content only (sites, briefings, portfolios…). No user CRUD.   |
+| viewer | Read-only.                                                   |
+
+- **Owner is pinned by email** via `OWNER_EMAIL` env (default `fxinfo24@gmail.com`),
+  defined in `security.py` (`OWNER_EMAILS`). The owner is a superuser: `require_role`
+  short-circuits to allow owner for ANY role requirement.
+- Owner is **protected**: cannot be demoted, deactivated, or deleted
+  (`auth.py` guards using `is_protected_owner`).
+- User-management + invite endpoints are `require_role("owner")` only.
+- `init_db._ensure_owner()` guarantees exactly one owner on every boot: promotes the
+  pinned `OWNER_EMAIL` to owner even over a stale competing owner, then demotes all
+  other `owner` accounts to `admin`.
+- `_seed_admin()` seeds the env account (`INITIAL_ADMIN_EMAIL`) as **content `admin`**
+  (NOT owner) — do not change this back to owner or the owner-precedence bug recurs.
+
+### LLM
+`ai_engine.generate_chat_reply` / `atomize_brief` call a real model when a key is
+present, else fall back to templated text (UI never breaks). Priority:
+**OpenRouter (model from `DBUserSettings.llm_model`) → OpenAI → Anthropic → template**.
+Keys come from `DBUserSettings` (Settings UI) or env (`OPENROUTER_API_KEY`,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
+
+### CORS
+Env-driven `CORS_ORIGINS` (comma-separated). `_cors_origins()` in `main.py` falls back
+to the Vercel domain + localhost. **Not `*` in prod.** Foreign origins are rejected
+(verified: configured origin echoed, evil origin gets no `access-control-allow-origin`).
+
+## 3. Database bootstrap (`init_db.init_database`)
+Runs on every cold start (FastAPI `lifespan` in `main.py` calls it):
+1. `Base.metadata.create_all` — creates tables (does NOT add columns to existing tables).
+2. `_migrate_settings_columns(db)` — ALTERs missing `openrouter_api_key` / `llm_model`
+   onto `user_settings` using SQLAlchemy `inspect()` (portable Postgres + SQLite).
+   **Why:** a DB seeded before those columns existed 500s on `/api/settings`, which
+   aborted `bootOS()` in the frontend (Settings button dead, briefing stuck).
+3. `_seed_admin(db)` — seeds `INITIAL_ADMIN_EMAIL` as content `admin` (idempotent).
+4. `_ensure_owner(db)` — guarantees exactly one owner (pinned email wins).
+5. Demo seed — seeds the 3 "Shareholder Asset Compounding Suite" sites **only when
+   `site_fintech` is missing** (idempotent per demo suite; preserves real sites you add).
+
+## 4. Env vars (Vercel dashboard)
+```
+DATABASE_URL=postgresql://...      # Neon
+JWT_SECRET=<32+ random bytes>
+INITIAL_ADMIN_EMAIL=...            # seeded as content admin (NOT owner)
+INITIAL_ADMIN_PASSWORD=...         # strong
+OWNER_EMAIL=fxinfo24@gmail.com     # pinned super-admin
+CORS_ORIGINS=https://coretext-eight.vercel.app
+OPENROUTER_API_KEY=...             # optional; or paste in Settings UI
+OPENAI_API_KEY=...                 # optional fallback
+ANTHROPIC_API_KEY=...              # optional fallback
+```
+⚠️ NEVER hardcode secrets in code. The OpenRouter key the owner pasted in chat was
+exposed — it should be set via Settings UI or `OPENROUTER_API_KEY` env, and rotated.
+
+## 5. Gotchas / known sharp edges
+- **`vercel.json` strips `/api`** — backend routes are mounted at root. If you add a
+  route, do NOT prefix with `/api` (it works locally but 404s in prod).
+- **`create_all` won't migrate** — adding a column needs a migration step (see
+  `_migrate_settings_columns`). Don't assume a new `Column` appears in prod automatically.
+- **Secrets in chat** — user has pasted live keys in conversation; treat as compromised,
+  prefer env/Settings, rotate.
+- **Register rate limit is in-memory** — ineffective across serverless instances. Acceptable
+  for a closed invite-only system; revisit if self-signup opens up.
+- **No email-verify / password reset / 2FA** — deferred as premature for a 3-user
+  invite-only product.
+- **Pyright false positives** across `models.py`/`routers` (`Column[str]` vs `str`) —
+  these are SQLAlchemy typing quirks; runtime is correct. Don't "fix" by retyping.
+- **Bootstrap is destructive-guarded but not self-healing for data** — `_ensure_owner`
+  demotes competing owners to admin; if you ever want multiple owners, change the model.
+
+## 6. How to run locally
 ```bash
-cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cd frontend && npm install
-export INITIAL_ADMIN_EMAIL=you@company.com INITIAL_ADMIN_PASSWORD='strong' JWT_SECRET='32+ bytes'
-./run_coretext.sh   # backend :8000, frontend :3000
+# backend
+cd backend && .venv/bin/python run.py   # needs DATABASE_URL/JWT_SECRET or uses SQLite
+# frontend
+cd frontend && npm install && npm run dev
 ```
-Note: `run_coretext.sh` references `/home/user/...` in the README-era copy — the committed version uses
-relative paths. If it fails, run `backend/run.py` and `frontend npm run dev` separately.
+Tests: `backend/test_api.py` exists (run with the venv); not wired into CI.
 
-## Conventions
-- Add new backend routes behind `Depends(get_current_user)` unless intentionally public.
-- Add matching `UserUpdate`/`schemas` entries for any new auth payloads.
-- Frontend: typed `api.ts` functions; never put secrets in code.
-- Conventional commits (`feat:`/`fix:`/`chore:`/`docs:`).
+## 7. Redis / external services
+None required. LLM via HTTP; DB via SQLAlchemy. No Neon MCP needed.
 
-## Known gaps / caveats
-- No email verification, no password reset, no 2FA.
-- In-memory rate limiter resets on restart / doesn't share across Vercel instances.
-- CORS is now env-driven (CORS_ORIGINS; defaults to the Vercel domain + localhost). Still no test CI.
-- No tests CI. `backend/test_api.py` exists but is not wired to a CI runner.
+## 8. Open items (see HANDOVER.md Status Ledger for history)
+- Confirm a fresh Vercel redeploy picks up the owner-precedence + demo-seed + settings
+  migration fixes (all pushed; verify live `/api/auth/me` returns `role: "owner"`).
+- Promote `newuser@realmail.com` to `admin` in the UI (owner-only).
+- Activate real LLM: set OpenRouter key + model in Settings (or env).
+- Regenerate this file whenever architecture changes materially.
