@@ -55,15 +55,17 @@ full user management.
 - `init_db` seed with `INITIAL_ADMIN_EMAIL`/`PASSWORD` → admin created + demo sites; seeded admin
   logs in; viewer blocked from `/api/auth/users` (403).
 
-## What is NOT done / still gaps
-- **The "AI" remains templated** (string templates, no real model call). This is the biggest
-  product gap vs. the README's claims.
-- No email verification, password reset, or 2FA.
+## What is NOT done / still gaps (current as of HEAD c335360)
+- **OpenRouter LLM**: key was entered via the Settings GUI and saved by the owner. Real LLM
+  path is wired (OpenRouter → OpenAI → Anthropic → template). Status to VERIFY: send a chat
+  message in the dashboard and confirm the reply is real model output, not templated text.
+- **`newuser@realmail.com`**: DELETED by the owner (was a test user). No promotion needed;
+  do not recreate unless the owner asks.
+- No email verification, password reset, or 2FA (deferred as premature for a 3-user invite-only product).
 - Registration rate limiter is in-memory (per-process) — not effective across serverless instances.
-- CORS is `*` — tighten via env-driven allowed origins for production.
-- No CI; `backend/test_api.py` not executed in a pipeline.
-- Neon MCP was evaluated and NOT required — the backend already supports Postgres via `DATABASE_URL`;
-  SQLAlchemy creates tables, so no MCP was needed to implement auth.
+- CORS is env-driven (`CORS_ORIGINS`), NOT `*`. Verified: configured origin echoed, foreign origin rejected.
+- No CI; `backend/test_api.py` exists but is not wired into a pipeline.
+- Neon MCP not required (backend uses Postgres via `DATABASE_URL`; SQLAlchemy manages schema).
 
 ## Env vars required for production
 ```
@@ -85,11 +87,12 @@ set in Vercel dashboard. Self-signup is gated by admin-generated invite codes (D
 `INVITATION_CODES` env no longer used.
 
 ## Real LLM
-`ai_engine.py` now calls OpenAI (gpt-4o-mini) then Anthropic (claude-3-5-haiku) when a key is
-present — key from `DBUserSettings.openai_api_key`/`anthropic_api_key` (Settings UI) or
-`OPENAI_API_KEY`/`ANTHROPIC_API_KEY` env. Falls back to the original templated output on missing
-key / call error (UI never breaks). To activate real AI: paste a key in Settings (Header ->
-gear) or set the env var, then redeploy.
+`ai_engine.py` calls **OpenRouter first (model from `DBUserSettings.llm_model`)**, then OpenAI
+(gpt-4o-mini), then Anthropic (claude-3-5-haiku), then falls back to templated output on
+missing key / call error (UI never breaks). Key source: `DBUserSettings.openrouter_api_key`
+(Settings GUI) or `OPENROUTER_API_KEY` env; OpenAI/Anthropic from `DBUserSettings` or env.
+**Current:** owner entered the OpenRouter key via the Settings GUI and saved it. VERIFY by
+sending a dashboard chat message — confirm the reply is real model output, not the template.
 
 ## One-line summary for the next session
 Auth + gated invite-code signup + real-LLM integration + Super-Admin owner tier + OpenRouter
@@ -103,3 +106,57 @@ register rate-limit is in-memory (per-instance); no email-verify/2FA.
 - 2026-08-28 | HEAD 6d3441a | FIX: demo 'Shareholder Asset Compounding Suite' (3 sites) not showing in Owner dashboard. Root cause: prod sites table empty/partially cleared; old seed gate 'if any site exists → skip everything' left the demo suite absent → activeSite null → all tabs stuck 'Loading…'. Made seeding idempotent per demo suite (seed only when site_fintech id is missing), preserving any real sites the owner added. Verified: empty DB seeds 3 demos; DB with an existing real site_fintech does NOT duplicate. Requires a redeploy to run on prod cold boot. | NEXT: redeploy; confirm 3 demo sites appear for owner.
 - 2026-08-28 | HEAD bc07edb | FIX: Invitations + User-Directory buttons disappeared for the real owner. Root cause: _seed_admin recreated admin@coretext.local as OWNER every boot; _ensure_owner saw 'an owner exists' and returned early, so the pinned owner fxinfo24@gmail.com stayed non-owner → owner-gated buttons vanished. Now _seed_admin seeds the env account as content 'admin' (not owner), and _ensure_owner promotes the pinned OWNER_EMAIL to owner even over a stale competing owner, then demotes all other 'owner' accounts to 'admin' (exactly one super-admin). Verified: stale-owner sim → fxinfo24@gmail.com=owner, admin@coretext.local=admin. | NEXT: redeploy; owner should now see Invitations + User Directory; generate invite; promote newuser→admin in UI; paste OpenRouter key.
 - 2026-08-28 | HEAD e408590 | DOCS: regenerated missing AGENTS.md from live code (security.py, routers, init_db, main.py CORS). Covers 3-tier RBAC + owner pinning, /api-strip vercel gotcha, create_all-won't-migrate, in-memory rate limit, Pyright false-positives, secrets hygiene. Made handoff skill universal (new 'handoff' skill; deleted coretext-handoff). Ledger now in repo HANDOVER.md. | OPEN: verify live owner role after redeploy; promote newuser→admin; activate OpenRouter (set key/model); register rate-limit still in-memory; no email-verify/2FA.
+- 2026-08-28 | HEAD c335360 | DOCS: added Resume prompt section (below) for fast restarts; refreshed NOT-done (AI now OpenRouter-first, CORS env-driven) + Real LLM section. Owner corrections folded in: `newuser@realmail.com` DELETED (no promotion needed); OpenRouter key ENTERED via Settings GUI and saved (verify real LLM output). | OPEN: verify live owner role + demo suites + Invitations after redeploy; verify chat returns real (non-templated) OpenRouter output; in-memory rate limit; no email-verify/2FA.
+
+---
+
+## Resume prompt (copy into a fresh Hermes session to continue)
+
+> **CoreText Executive OS — continue from HEAD `c335360` (main).**
+>
+> Repo: `fxinfo24/CoreText`, local `/Volumes/ByteSmith/BuildLab/CoreText`, live at
+> `https://coretext-eight.vercel.app` (Vercel auto-deploys from `main`).
+>
+> **Start by invoking the `handoff` skill** for this repo — it reads live git state +
+> `AGENTS.md` + `HANDOVER.md` and emits a status brief. Trust those docs as source of truth
+> (`AGENTS.md` was regenerated from live code at `c335360`; `HANDOVER.md` has the full Status Ledger).
+>
+> **Where we stopped (all code FIXED + PUSHED; pending prod confirmation):**
+> 1. Owner dashboard 500 ("Loading Executive Briefing…" + dead Settings) — fixed by
+>    `_migrate_settings_columns()` in `backend/app/init_db.py` (SQLAlchemy inspect ALTERs
+>    `openrouter_api_key`/`llm_model` onto `user_settings`).
+> 2. Demo "Shareholder Asset Compounding Suite" (3 sites) missing — fixed by idempotent
+>    per-`site_fintech` demo seeding in `init_db.py`.
+> 3. Invitations + User Directory buttons vanished for the owner — fixed by owner-precedence:
+>    `_seed_admin()` seeds env account as content `admin` (not owner); `_ensure_owner()` promotes
+>    the pinned `OWNER_EMAIL` (`fxinfo24@gmail.com`) to owner even over a stale competing owner,
+>    then demotes other owners to `admin`.
+>
+> **RBAC:** `owner` (pinned `fxinfo24@gmail.com`) > `admin` (content only) > `viewer`.
+> Owner-only: user CRUD + invite management. `require_role` grants owner superuser passthrough.
+> Owner is protected from demote/delete.
+>
+> **LLM:** `backend/app/ai_engine.py` calls OpenRouter (model from `DBUserSettings.llm_model`)
+> → OpenAI → Anthropic → template fallback. **The owner entered the OpenRouter key via the
+> Settings GUI and saved it** — VERIFY chat returns real (non-templated) model output.
+> ⚠️ A live key was pasted in an earlier chat and is compromised; the GUI-saved key is fine,
+> but any key that appeared in chat should be rotated in OpenRouter. Never hardcode secrets.
+>
+> **CORS:** env-driven `CORS_ORIGINS` (not `*`).
+>
+> **Known owner corrections:** `newuser@realmail.com` was DELETED — do NOT recreate or promote it.
+>
+> **First actions this session:**
+> 1. Confirm prod state after any redeploy: `GET /api/auth/me` → `role: "owner"` for
+>    `fxinfo24@gmail.com`; 3 demo suites + Invitations/User Directory buttons appear.
+> 2. If owner role still wrong on prod, debug `_ensure_owner`/`_seed_admin` against the live
+>    Neon DB — do NOT reintroduce `admin@coretext.local` as owner.
+> 3. Verify OpenRouter: send a dashboard chat message; confirm the reply is real model output.
+> 4. Update `HANDOVER.md` Status Ledger after any change (self-improve loop).
+>
+> **Hard rules:** Never hardcode secrets. Never reintroduce `CORS: *`. Never change `_seed_admin`
+> back to seeding `owner` (recreates the bug). `vercel.json` strips `/api`, so backend routes are
+> mounted at root (e.g. `/auth/login`, not `/api/auth/login`). Pyright `Column[str]` warnings in
+> `models.py`/`routers` are false positives — don't retype them.
+>
+> Report what you find and verify before claiming anything is fixed.
