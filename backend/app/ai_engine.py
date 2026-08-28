@@ -16,8 +16,19 @@ def _resolve_keys(openai_key, anthropic_key, openrouter_key):
     return oai, ant, orr
 
 
+def _safe_err(e: Exception) -> str:
+    """Sanitize an LLM provider exception into a user-safe message.
+    Never echo secrets (API keys) — only status codes + provider messages."""
+    msg = str(e)
+    # Strip anything that looks like a bearer token / long alphanumeric secret.
+    import re
+    msg = re.sub(r"sk-[A-Za-z0-9_\-]{8,}", "<redacted-key>", msg)
+    msg = re.sub(r"Bearer [A-Za-z0-9_\-\.]{8,}", "Bearer <redacted-key>", msg)
+    return msg
+
+
 def _chat_via_openrouter(api_key: str, model: str, system: str, user: str,
-                         max_tokens: int = 1200) -> Optional[str]:
+                         max_tokens: int = 1200):
     try:
         from openai import OpenAI
         # OpenRouter is OpenAI-compatible; route through its base_url.
@@ -38,14 +49,13 @@ def _chat_via_openrouter(api_key: str, model: str, system: str, user: str,
             timeout=30,
             extra_headers=extra_headers,
         )
-        return resp.choices[0].message.content.strip()
+        return resp.choices[0].message.content.strip(), None
     except Exception as e:
-        # Surface the real reason instead of silently templating.
         print(f"[ai_engine] OpenRouter call failed: {type(e).__name__}: {e}")
-        return None
+        return None, f"{type(e).__name__}: {_safe_err(e)}"
 
 
-def _chat_via_openai(api_key: str, system: str, user: str, max_tokens: int = 1200) -> Optional[str]:
+def _chat_via_openai(api_key: str, system: str, user: str, max_tokens: int = 1200):
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
@@ -59,13 +69,13 @@ def _chat_via_openai(api_key: str, system: str, user: str, max_tokens: int = 120
             temperature=0.7,
             timeout=30,
         )
-        return resp.choices[0].message.content.strip()
+        return resp.choices[0].message.content.strip(), None
     except Exception as e:
         print(f"[ai_engine] OpenAI call failed: {e}")
-        return None
+        return None, f"{type(e).__name__}: {_safe_err(e)}"
 
 
-def _chat_via_anthropic(api_key: str, system: str, user: str, max_tokens: int = 1200) -> Optional[str]:
+def _chat_via_anthropic(api_key: str, system: str, user: str, max_tokens: int = 1200):
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -76,31 +86,35 @@ def _chat_via_anthropic(api_key: str, system: str, user: str, max_tokens: int = 
             messages=[{"role": "user", "content": user}],
             timeout=30,
         )
-        return resp.content[0].text.strip()
+        return resp.content[0].text.strip(), None
     except Exception as e:
         print(f"[ai_engine] Anthropic call failed: {e}")
-        return None
+        return None, f"{type(e).__name__}: {_safe_err(e)}"
 
 
 def _llm_text(system: str, user: str, openai_key, anthropic_key, openrouter_key=None,
-             llm_model: str = "openai/gpt-4o-mini", max_tokens: int = 1200) -> Optional[str]:
+             llm_model: str = "openai/gpt-4o-mini", max_tokens: int = 1200):
     oai, ant, orr = _resolve_keys(openai_key, anthropic_key, openrouter_key)
+    last_err = None
     # 1) OpenRouter (selected model) — preferred when a key is set.
     if orr:
-        out = _chat_via_openrouter(orr, llm_model, system, user, max_tokens)
+        out, err = _chat_via_openrouter(orr, llm_model, system, user, max_tokens)
         if out:
-            return out
+            return out, None
+        last_err = err
     # 2) Direct OpenAI
     if oai:
-        out = _chat_via_openai(oai, system, user, max_tokens)
+        out, err = _chat_via_openai(oai, system, user, max_tokens)
         if out:
-            return out
+            return out, None
+        last_err = err or last_err
     # 3) Anthropic
     if ant:
-        out = _chat_via_anthropic(ant, system, user, max_tokens)
+        out, err = _chat_via_anthropic(ant, system, user, max_tokens)
         if out:
-            return out
-    return None
+            return out, None
+        last_err = err or last_err
+    return None, last_err
 
 
 SYSTEM_CHAT = (
@@ -116,8 +130,8 @@ def generate_chat_reply(site_name: str, user_query: str,
                         openai_key: str = None, anthropic_key: str = None,
                         openrouter_key: str = None, llm_model: str = "openai/gpt-4o-mini") -> str:
     has_key = any((openrouter_key, openai_key, anthropic_key))
-    # Try the real LLM first (OpenRouter preferred).
-    llm = _llm_text(
+    # Try the real LLM first (OpenRouter preferred). Returns (text, error).
+    llm, err = _llm_text(
         SYSTEM_CHAT,
         f"Site: {site_name}\nShareholder question: {user_query}",
         openai_key, anthropic_key, openrouter_key, llm_model,
@@ -125,16 +139,18 @@ def generate_chat_reply(site_name: str, user_query: str,
     if llm:
         return llm
     # No real reply obtained. If a key was configured we want to be honest about
-    # the failure instead of returning convincing-looking fake content.
+    # the failure and show the actual provider error (never the secret key).
     if has_key:
+        err_detail = err or "provider returned no content and no error"
         return (
             f"<h4 class='text-base font-bold text-rose-400 border-b border-slate-800 pb-2'>"
             f"Co-Director Offline — LLM Call Failed</h4>"
             f"<p class='text-slate-300'>A model key was configured (model: <code>{llm_model}</code>) "
-            f"but the provider returned no response. Check the server logs for "
-            f"<code>[ai_engine] ... call failed</code> — common causes: invalid/revoked key, "
-            f"model ID not available on your tier, or rate limit (free tier: 20 RPM).</p>"
-            f"<p class='text-xs text-slate-400 mt-2'>Your directive was received but not processed by the model.</p>"
+            f"but the provider did not return a reply.</p>"
+            f"<p class='text-xs text-slate-400 mt-2 font-mono'>{err_detail}</p>"
+            f"<p class='text-xs text-slate-400 mt-2'>Common causes: invalid/revoked key, "
+            f"model unavailable on your tier, or rate limit (free tier: 20 RPM). "
+            f"Re-check the key in Settings and Save again.</p>"
         )
     # Graceful fallback to the templated reply (no key configured at all).
     return _templated_chat_reply(site_name, user_query)
@@ -211,7 +227,7 @@ def atomize_brief(core_title: str, cluster: str,
                   openrouter_key: str = None, llm_model: str = "openai/gpt-4o-mini") -> schemas.AtomizationResponse:
     prefix = core_title.split(":")[0] if ":" in core_title else core_title
     prompt = f"Core asset title: {core_title}\nNiche cluster: {cluster}\nProduce the atomization blueprint."
-    llm = _llm_text(SYSTEM_ATOMIZE, prompt, openai_key, anthropic_key, openrouter_key, llm_model, max_tokens=2000)
+    llm, _err = _llm_text(SYSTEM_ATOMIZE, prompt, openai_key, anthropic_key, openrouter_key, llm_model, max_tokens=2000)
     if llm:
         try:
             # Strip markdown fences if the model added them.
