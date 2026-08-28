@@ -132,6 +132,26 @@ def main():
                   last.get("sender") == "ai" and len(last.get("text", "")) > 50,
                   str(last)[:80])
 
+        # 6b. Settings persistence: POST an OpenRouter key + model, GET it back.
+        # Regression guard: a prior bug dropped openrouter_api_key/llm_model on save.
+        set_payload = {
+            "director_name": "Smoke Director",
+            "shareholder_posture": "Aggressive Compounder",
+            "openai_api_key": "",
+            "anthropic_api_key": "",
+            "openrouter_api_key": "sk-or-REGRESSIONTEST-not-real",
+            "llm_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "auto_execute_tier1": True,
+            "auto_execute_tier2": True,
+            "email_briefing_time": "07:00 AM",
+        }
+        sp = client.post("/settings", json=set_payload, headers=H)
+        check("POST /settings -> 200", sp.status_code == 200, str(sp.status_code))
+        got = client.get("/settings", headers=H)
+        gj = got.json() if got.status_code == 200 else {}
+        check("settings roundtrip openrouter_api_key", gj.get("openrouter_api_key") == set_payload["openrouter_api_key"], gj.get("openrouter_api_key", "<None>")[:12] + "...")
+        check("settings roundtrip llm_model", gj.get("llm_model") == set_payload["llm_model"], gj.get("llm_model"))
+
         # 7. viewer blocked from owner-only
         db = SessionLocal()
         v = models.DBUser(id="v_smoke", email="smoke_viewer@x.com",

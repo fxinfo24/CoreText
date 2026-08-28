@@ -22,6 +22,11 @@ def _chat_via_openrouter(api_key: str, model: str, system: str, user: str,
         from openai import OpenAI
         # OpenRouter is OpenAI-compatible; route through its base_url.
         client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+        # OpenRouter requires referer/title headers for some routing tiers; harmless otherwise.
+        extra_headers = {
+            "HTTP-Referer": "https://coretext-eight.vercel.app",
+            "X-Title": "CoreText Executive OS",
+        }
         resp = client.chat.completions.create(
             model=model or "openai/gpt-4o-mini",
             messages=[
@@ -31,10 +36,12 @@ def _chat_via_openrouter(api_key: str, model: str, system: str, user: str,
             max_tokens=max_tokens,
             temperature=0.7,
             timeout=30,
+            extra_headers=extra_headers,
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[ai_engine] OpenRouter call failed: {e}")
+        # Surface the real reason instead of silently templating.
+        print(f"[ai_engine] OpenRouter call failed: {type(e).__name__}: {e}")
         return None
 
 
@@ -108,6 +115,7 @@ SYSTEM_CHAT = (
 def generate_chat_reply(site_name: str, user_query: str,
                         openai_key: str = None, anthropic_key: str = None,
                         openrouter_key: str = None, llm_model: str = "openai/gpt-4o-mini") -> str:
+    has_key = any((openrouter_key, openai_key, anthropic_key))
     # Try the real LLM first (OpenRouter preferred).
     llm = _llm_text(
         SYSTEM_CHAT,
@@ -116,7 +124,19 @@ def generate_chat_reply(site_name: str, user_query: str,
     )
     if llm:
         return llm
-    # Graceful fallback to the templated reply (no key / call failed).
+    # No real reply obtained. If a key was configured we want to be honest about
+    # the failure instead of returning convincing-looking fake content.
+    if has_key:
+        return (
+            f"<h4 class='text-base font-bold text-rose-400 border-b border-slate-800 pb-2'>"
+            f"Co-Director Offline — LLM Call Failed</h4>"
+            f"<p class='text-slate-300'>A model key was configured (model: <code>{llm_model}</code>) "
+            f"but the provider returned no response. Check the server logs for "
+            f"<code>[ai_engine] ... call failed</code> — common causes: invalid/revoked key, "
+            f"model ID not available on your tier, or rate limit (free tier: 20 RPM).</p>"
+            f"<p class='text-xs text-slate-400 mt-2'>Your directive was received but not processed by the model.</p>"
+        )
+    # Graceful fallback to the templated reply (no key configured at all).
     return _templated_chat_reply(site_name, user_query)
 
 
