@@ -14,6 +14,9 @@ class DBUser(Base):
     role = Column(String, default="admin")  # "admin" | "viewer"
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    # TOTP 2FA: secret is stored ENCRYPTED (never plaintext). Empty when disabled.
+    totp_secret = Column(Text, nullable=True, default=None)
+    totp_enabled = Column(Boolean, default=False)
 
 
 class DBInviteCode(Base):

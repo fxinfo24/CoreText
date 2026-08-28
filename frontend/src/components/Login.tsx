@@ -14,19 +14,55 @@ export const Login: React.FC<LoginProps> = ({ onAuthenticated }) => {
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 2FA second step
+  const [totpTempToken, setTotpTempToken] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
+
+  const finishLogin = async (token: string) => {
+    api.setToken(token);
+    const user = await api.getCurrentUser();
+    onAuthenticated(user);
+  };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const token = await api.login({ email, password });
-      api.setToken(token.access_token);
-      const user = await api.getCurrentUser();
-      onAuthenticated(user);
+      const res = await api.login({ email, password });
+      if (res.totp_required && res.temp_token) {
+        setTotpTempToken(res.temp_token);
+        setLoading(false);
+        return; // wait for 2FA code
+      }
+      if (res.access_token) {
+        await finishLogin(res.access_token);
+      } else {
+        setError('Unexpected login response.');
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       setError(detail || 'Login failed. Check your credentials.');
+    } finally {
+      if (!totpTempToken) setLoading(false);
+    }
+  };
+
+  const handleTotpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!totpTempToken) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await api.verifyTwoFactor(totpTempToken, totpCode);
+      if (res.access_token) {
+        await finishLogin(res.access_token);
+      } else {
+        setError('Unexpected 2FA response.');
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setError(detail || 'Two-factor verification failed.');
     } finally {
       setLoading(false);
     }
@@ -50,9 +86,13 @@ export const Login: React.FC<LoginProps> = ({ onAuthenticated }) => {
       });
       // Auto sign-in after successful registration.
       const token = await api.login({ email, password });
-      api.setToken(token.access_token);
-      const user = await api.getCurrentUser();
-      onAuthenticated(user);
+      if (!token.access_token) {
+        // Shouldn't happen for a brand-new (2FA-off) account, but guard anyway.
+        setError('Registration succeeded but auto sign-in failed. Please sign in manually.');
+        setMode('signin');
+        return;
+      }
+      await finishLogin(token.access_token);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       setError(detail || 'Registration failed.');
@@ -116,12 +156,33 @@ export const Login: React.FC<LoginProps> = ({ onAuthenticated }) => {
               />
             </div>
 
+            {totpTempToken && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide mb-1.5">
+                  Two-Factor Code
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  className="w-full rounded-lg bg-slate-900 border border-indigo-700 px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 tracking-widest"
+                  placeholder="123456"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Enter the 6-digit code from your authenticator app.
+                </p>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
               className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2.5 font-semibold text-white transition-colors"
             >
-              {loading ? 'Authenticating…' : 'Enter Command Center'}
+              {loading ? 'Authenticating…' : (totpTempToken ? 'Verify & Enter' : 'Enter Command Center')}
             </button>
 
             <p className="text-[11px] text-slate-600 text-center leading-relaxed">

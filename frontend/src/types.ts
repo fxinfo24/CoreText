@@ -241,11 +241,13 @@ export interface User {
   full_name: string;
   role: string;
   is_active: boolean;
+  totp_enabled: boolean;
 }
 
 export interface LoginRequest {
   email: string;
   password: string;
+  totp_code?: string;
 }
 
 export interface AuthToken {

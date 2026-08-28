@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.database import SessionLocal
 from app import models, schemas
 from app.security import (
     hash_password,
@@ -27,6 +28,15 @@ from app.security import (
     ROLE_ADMIN,
     ROLE_VIEWER,
     VALID_ROLES,
+    generate_totp_secret,
+    totp_provisioning_uri,
+    verify_totp,
+    encrypt_secret,
+    decrypt_secret,
+    create_temp_token,
+    decode_temp_token,
+    _fernet,
+    TOTP_ISSUER,
 )
 from app.blocklist import is_disposable_email
 
@@ -148,7 +158,7 @@ def register(
     return _to_public(user)
 
 
-@router.post("/login", response_model=schemas.Token)
+@router.post("/login", response_model=schemas.LoginResponse)
 def login(req: schemas.LoginRequest, db: Session = Depends(get_db), request: Request = None):
     # Brute-force defense: throttle repeated login attempts per client IP.
     client_ip = _client_ip(request)
@@ -164,12 +174,115 @@ def login(req: schemas.LoginRequest, db: Session = Depends(get_db), request: Req
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
-    return schemas.Token(access_token=create_access_token(user))
+    # Two-step login when 2FA is enabled on the account.
+    if user.totp_enabled:
+        if not req.totp_code:
+            # Password OK, but need the TOTP code next. Issue a short-lived temp token.
+            return schemas.LoginResponse(
+                totp_required=True,
+                temp_token=create_temp_token(user),
+            )
+        # Validate the provided code against the (decrypted) secret.
+        try:
+            secret = decrypt_secret(user.totp_secret) if user.totp_secret else ""
+        except Exception:
+            secret = ""
+        if not secret or not verify_totp(secret, req.totp_code):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid two-factor code",
+            )
+    return schemas.LoginResponse(access_token=create_access_token(user))
 
 
 @router.get("/me", response_model=schemas.UserPublic)
 def me(user: models.DBUser = Depends(get_current_user)):
     return _to_public(user)
+
+
+# --- Two-Factor Authentication (TOTP) ----------------------------------------
+# Each user manages 2FA on their OWN account. The TOTP secret is encrypted at
+# rest (FERNET_KEY); it is never returned in plaintext after initial setup.
+@router.post("/2fa/setup", response_model=schemas.TwoFactorSetupResponse)
+def tfa_setup(current_user: models.DBUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Operate on the db-scoped session (single session, no cross-session staleness).
+    user = db.query(models.DBUser).filter(models.DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is already enabled on this account")
+    if _fernet is None:
+        raise HTTPException(
+            status_code=503,
+            detail="2FA is not available: server missing FERNET_KEY configuration.",
+        )
+    secret = generate_totp_secret()
+    # Persist encrypted, but flagged disabled until the user confirms a code.
+    user.totp_secret = encrypt_secret(secret)
+    user.totp_enabled = False
+    db.commit()
+    return schemas.TwoFactorSetupResponse(
+        secret=secret,
+        otpauth_uri=totp_provisioning_uri(user.email, secret),
+        issuer=TOTP_ISSUER,
+    )
+
+
+@router.post("/2fa/enable", response_model=schemas.UserPublic)
+def tfa_enable(
+    req: schemas.TwoFactorEnableRequest,
+    current_user: models.DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.DBUser).filter(models.DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.totp_secret:
+        raise HTTPException(status_code=400, detail="Call /2fa/setup first")
+    try:
+        secret = decrypt_secret(user.totp_secret)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not decrypt 2FA secret")
+    if not verify_totp(secret, req.code):
+        raise HTTPException(status_code=400, detail="Invalid code; 2FA not enabled")
+    user.totp_enabled = True
+    db.commit()
+    # Read back from a fresh session so the response reflects the committed row
+    # (avoids stale ORM snapshot under SQLite connection-pool semantics).
+    fresh = SessionLocal().query(models.DBUser).filter(models.DBUser.id == user.id).first()
+    return _to_public(fresh)
+
+
+@router.post("/2fa/disable", response_model=schemas.UserPublic)
+def tfa_disable(current_user: models.DBUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(models.DBUser).filter(models.DBUser.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.totp_enabled:
+        raise HTTPException(status_code=400, detail="2FA is not enabled on this account")
+    user.totp_enabled = False
+    user.totp_secret = None
+    db.commit()
+    fresh = SessionLocal().query(models.DBUser).filter(models.DBUser.id == user.id).first()
+    return _to_public(fresh)
+
+
+@router.post("/2fa/verify", response_model=schemas.LoginResponse)
+def tfa_verify(req: schemas.TwoFactorConfirmRequest, db: Session = Depends(get_db)):
+    """Second step of login: exchange (temp_token + code) for a real JWT."""
+    payload = decode_temp_token(req.temp_token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired login session")
+    user = db.query(models.DBUser).filter(models.DBUser.id == payload.get("sub")).first()
+    if not user or not user.is_active or not user.totp_enabled:
+        raise HTTPException(status_code=401, detail="Account state changed; please sign in again")
+    try:
+        secret = decrypt_secret(user.totp_secret) if user.totp_secret else ""
+    except Exception:
+        secret = ""
+    if not secret or not verify_totp(secret, req.code):
+        raise HTTPException(status_code=401, detail="Invalid two-factor code")
+    return schemas.LoginResponse(access_token=create_access_token(user))
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)

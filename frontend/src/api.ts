@@ -46,8 +46,44 @@ apiClient.interceptors.response.use(
   }
 );
 
-export const login = async (req: T.LoginRequest): Promise<T.AuthToken> => {
-  const res = await apiClient.post<T.AuthToken>('/api/auth/login', req);
+export interface LoginResult {
+  access_token?: string;
+  token_type?: string;
+  totp_required?: boolean;
+  temp_token?: string;
+}
+
+export const login = async (req: T.LoginRequest): Promise<LoginResult> => {
+  const res = await apiClient.post<LoginResult>('/api/auth/login', req);
+  return res.data;
+};
+
+export const verifyTwoFactor = async (tempToken: string, code: string): Promise<LoginResult> => {
+  const res = await apiClient.post<LoginResult>('/api/auth/2fa/verify', {
+    temp_token: tempToken,
+    code,
+  });
+  return res.data;
+};
+
+export interface TwoFactorSetup {
+  secret: string;
+  otpauth_uri: string;
+  issuer: string;
+}
+
+export const setupTwoFactor = async (): Promise<TwoFactorSetup> => {
+  const res = await apiClient.post<TwoFactorSetup>('/api/auth/2fa/setup');
+  return res.data;
+};
+
+export const enableTwoFactor = async (code: string): Promise<T.User> => {
+  const res = await apiClient.post<T.User>('/api/auth/2fa/enable', { code });
+  return res.data;
+};
+
+export const disableTwoFactor = async (): Promise<T.User> => {
+  const res = await apiClient.post<T.User>('/api/auth/2fa/disable');
   return res.data;
 };
 

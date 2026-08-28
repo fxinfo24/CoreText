@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { X, Shield, Key, Save } from 'lucide-react';
 import * as T from '../types';
+import * as api from '../api';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: T.UserSettings;
+  currentUser: T.User | null;
   onSave: (newSettings: T.UserSettings) => Promise<void>;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onSave }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, currentUser, onSave }) => {
   const [directorName, setDirectorName] = useState(settings.director_name);
   const [posture, setPosture] = useState(settings.shareholder_posture);
   const [openaiKey, setOpenaiKey] = useState(settings.openai_api_key || '');
@@ -17,6 +19,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
   const [openrouterKey, setOpenrouterKey] = useState(settings.openrouter_api_key || '');
   const [llmModel, setLlmModel] = useState(settings.llm_model || 'openai/gpt-4o-mini');
   const [saving, setSaving] = useState(false);
+
+  // --- 2FA (TOTP) state ---
+  const [tfaBusy, setTfaBusy] = useState(false);
+  const [tfaError, setTfaError] = useState<string | null>(null);
+  const [tfaSetup, setTfaSetup] = useState<{ secret: string; otpauth_uri: string; issuer: string } | null>(null);
+  const [tfaCode, setTfaCode] = useState('');
+
+  const totpEnabled = !!currentUser?.totp_enabled;
+
+  const startSetup = async () => {
+    setTfaError(null);
+    setTfaBusy(true);
+    try {
+      const s = await api.setupTwoFactor();
+      setTfaSetup(s);
+    } catch (e: any) {
+      setTfaError(e?.response?.data?.detail || 'Failed to start 2FA setup');
+    } finally {
+      setTfaBusy(false);
+    }
+  };
+
+  const confirmEnable = async () => {
+    setTfaError(null);
+    setTfaBusy(true);
+    try {
+      await api.enableTwoFactor(tfaCode);
+      setTfaSetup(null);
+      setTfaCode('');
+      // Refresh current user so the badge updates.
+      await api.getCurrentUser();
+      window.location.reload();
+    } catch (e: any) {
+      setTfaError(e?.response?.data?.detail || 'Invalid code');
+    } finally {
+      setTfaBusy(false);
+    }
+  };
+
+  const disable2FA = async () => {
+    setTfaError(null);
+    setTfaBusy(true);
+    try {
+      await api.disableTwoFactor();
+      window.location.reload();
+    } catch (e: any) {
+      setTfaError(e?.response?.data?.detail || 'Failed to disable 2FA');
+    } finally {
+      setTfaBusy(false);
+    }
+  };
 
   // Popular OpenRouter model slugs (https://openrouter.ai/models). The field
   // also accepts any custom slug typed by the owner.
@@ -155,6 +208,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             <span className="block text-[10px] text-slate-500 mt-1.5 leading-snug">
               Used when an OpenRouter key is set. Pick a preset or type any OpenRouter model slug.
             </span>
+          </div>
+
+          {/* --- Two-Factor Authentication (TOTP) --- */}
+          <div className="pt-4 border-t border-slate-800">
+            <label className="block font-bold text-emerald-300 mb-1.5 flex items-center">
+              <Shield className="w-4 h-4 mr-1.5 text-emerald-400" />
+              Two-Factor Authentication (Authenticator App)
+            </label>
+            {tfaError && (
+              <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300 mb-2">
+                {tfaError}
+              </div>
+            )}
+            {totpEnabled ? (
+              <div className="flex items-center justify-between bg-slate-950 border border-emerald-800/60 rounded-2xl px-4 py-3">
+                <span className="text-xs text-emerald-300 font-semibold">✓ Enabled — your account is protected by a TOTP code.</span>
+                <button
+                  onClick={disable2FA}
+                  disabled={tfaBusy}
+                  className="text-xs text-red-300 hover:text-red-200 border border-red-800/60 rounded-xl px-3 py-1.5 disabled:opacity-50"
+                >
+                  Disable
+                </button>
+              </div>
+            ) : tfaSetup ? (
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] text-slate-400">
+                  Scan this QR with Google Authenticator / 1Password / Authy, then enter the 6-digit code to confirm.
+                </p>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(tfaSetup.otpauth_uri)}`}
+                  alt="2FA QR code"
+                  className="w-40 h-40 rounded-xl bg-white mx-auto"
+                />
+                <div className="text-center">
+                  <span className="text-[10px] text-slate-500">Manual key:</span>
+                  <code className="block text-xs text-indigo-300 font-mono break-all mt-0.5">{tfaSetup.secret}</code>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="123456"
+                  value={tfaCode}
+                  onChange={(e) => setTfaCode(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-slate-100 font-mono tracking-widest focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  onClick={confirmEnable}
+                  disabled={tfaBusy || tfaCode.length < 6}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm py-3 rounded-2xl disabled:opacity-50"
+                >
+                  {tfaBusy ? 'Verifying…' : 'Confirm & Enable 2FA'}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={startSetup}
+                disabled={tfaBusy}
+                className="w-full bg-slate-950 border border-slate-800 hover:border-emerald-700 text-emerald-300 font-bold text-sm py-3 rounded-2xl disabled:opacity-50 transition-colors"
+              >
+                {tfaBusy ? 'Preparing…' : 'Enable Two-Factor Authentication'}
+              </button>
+            )}
           </div>
         </div>
 

@@ -16,10 +16,36 @@ class UserPublic(BaseModel):
     full_name: str = ""
     role: str = "viewer"
     is_active: bool = True
+    totp_enabled: bool = False
 
 class LoginRequest(BaseModel):
     email: str
     password: str
+    # Required only when the account has 2FA enabled (second login step).
+    totp_code: Optional[str] = None
+
+class LoginResponse(BaseModel):
+    # Either a full token (no 2FA, or totp_code supplied) ...
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+    # ... or a pending state requiring the 2FA code.
+    totp_required: bool = False
+    temp_token: Optional[str] = None
+
+class TwoFactorSetupResponse(BaseModel):
+    secret: str            # base32 — show once, user enters into authenticator app
+    otpauth_uri: str       # otpauth://totp/... for QR rendering
+    issuer: str
+
+class TwoFactorVerifyRequest(BaseModel):
+    code: str
+
+class TwoFactorEnableRequest(BaseModel):
+    code: str             # must match current pending secret
+
+class TwoFactorConfirmRequest(BaseModel):
+    temp_token: str
+    code: str
 
 class RegisterRequest(BaseModel):
     email: str

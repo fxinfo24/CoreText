@@ -437,6 +437,7 @@ export const App: React.FC = () => {
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
+          currentUser={currentUser}
           onSave={async (newSettings) => {
             const updated = await api.updateSettings(newSettings);
             setSettings(updated);

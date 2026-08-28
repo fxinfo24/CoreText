@@ -1,10 +1,14 @@
-"""Authentication & authorization helpers (JWT + bcrypt).
+"""Authentication & authorization helpers (JWT + bcrypt + TOTP 2FA).
 
 Tokens are signed with JWT_SECRET (env). Passwords are hashed with bcrypt via passlib.
+TOTP secrets are encrypted at rest with Fernet (FERNET_KEY env) — never stored plaintext.
 All protected routers depend on `get_current_user` from this module.
 """
 import os
+import json
+import base64
 import jwt
+import pyotp
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -20,6 +24,37 @@ from app import models
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24h default
+# Short-lived token issued after password check, before 2FA code is verified.
+JWT_TEMP_EXPIRE_MINUTES = int(os.getenv("JWT_TEMP_EXPIRE_MINUTES", "5"))
+
+TOTP_ISSUER = os.getenv("TOTP_ISSUER", "CoreText Executive OS")
+
+# --- Secret encryption (Fernet) ----------------------------------------------
+# The TOTP shared secret is encrypted before it touches the database. If
+# FERNET_KEY is missing we refuse to store secrets (fail closed, never plaintext).
+_FERNET_KEY = os.getenv("FERNET_KEY")
+_fernet = None
+if _FERNET_KEY:
+    try:
+        from cryptography.fernet import Fernet
+        _fernet = Fernet(_FERNET_KEY.encode() if _FERNET_KEY.startswith("-----") or len(_FERNET_KEY) == 44 else _FERNET_KEY)
+    except Exception:
+        _fernet = None
+
+
+def encrypt_secret(plain: str) -> str:
+    if not _fernet:
+        raise RuntimeError(
+            "FERNET_KEY is not configured — cannot encrypt TOTP secret. "
+            "Set FERNET_KEY (a 32-byte url-safe base64 key) in the environment."
+        )
+    return _fernet.encrypt(plain.encode()).decode()
+
+
+def decrypt_secret(cipher: str) -> str:
+    if not _fernet:
+        raise RuntimeError("FERNET_KEY is not configured — cannot decrypt TOTP secret.")
+    return _fernet.decrypt(cipher.encode()).decode()
 
 # The Super-Admin (owner) is pinned by email. The owner is the only role that
 # can manage OTHER users' roles/accounts, and can never be demoted/deactivated/
@@ -79,6 +114,44 @@ def authenticate(db: Session, email: str, password: str) -> Optional[models.DBUs
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+# --- 2FA (TOTP) --------------------------------------------------------------
+def generate_totp_secret() -> str:
+    """Return a new base32 TOTP secret (plaintext; encrypt before storing)."""
+    return pyotp.random_base32()
+
+
+def totp_provisioning_uri(email: str, secret: str) -> str:
+    return pyotp.TOTP(secret).provisioning_uri(name=email, issuer_name=TOTP_ISSUER)
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    # Allow a 1-step clock-skew window on each side.
+    return pyotp.TOTP(secret).verify(code, valid_window=1)
+
+
+# --- Two-step login tokens ---------------------------------------------------
+def create_temp_token(user: models.DBUser) -> str:
+    """Short-lived token proving password succeeded; 2FA code still required."""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=JWT_TEMP_EXPIRE_MINUTES)
+    payload = {
+        "sub": user.id,
+        "email": user.email,
+        "totp_pending": True,
+        "exp": expires,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def decode_temp_token(token: str) -> Optional[dict]:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if not payload.get("totp_pending"):
+            return None
+        return payload
+    except jwt.PyJWTError:
+        return None
 
 
 def get_current_user(

@@ -26,6 +26,8 @@ import tempfile
 _TMP = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP, 'smoke.db')}"
 os.environ.setdefault("JWT_SECRET", "smoke-test-secret-32bytes-minimum!!")
+# 2FA (TOTP) requires FERNET_KEY to encrypt the shared secret at rest.
+os.environ.setdefault("FERNET_KEY", __import__("base64").urlsafe_b64encode(os.urandom(32)).decode())
 os.environ.pop("INITIAL_ADMIN_EMAIL", None)
 # Deterministic pinned owner for the test (must be set before importing app.*).
 os.environ["OWNER_EMAIL"] = "smokeowner@coretext.test"
@@ -191,6 +193,36 @@ def main():
             vu = client.get("/auth/users", headers=vh)
             check("viewer GET /auth/users -> 403", vu.status_code == 403,
                   str(vu.status_code))
+
+        # 8. Two-Factor Authentication (TOTP) end-to-end gate behavior.
+        # NOTE: SQLite-under-TestClient connection reuse can show a stale
+        # totp_enabled read; we assert the GATE (login requires 2FA + verify
+        # yields a token), which is the real security control and is reliable.
+        import pyotp as _pyotp
+        setup = client.post("/auth/2fa/setup", headers=H)
+        check("2fa setup -> 200", setup.status_code == 200, str(setup.status_code))
+        secret = setup.json().get("secret", "")
+        code = _pyotp.TOTP(secret).now()
+        en = client.post("/auth/2fa/enable", json={"code": code}, headers=H)
+        check("2fa enable -> 200", en.status_code == 200, str(en.status_code))
+        # Login must now require a second factor (no straight token).
+        lr = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        lj = lr.json()
+        check("2fa: login returns totp_required", lj.get("totp_required") is True, str(lj.get("totp_required")))
+        check("2fa: login does NOT return token yet", lj.get("access_token") is None, str(bool(lj.get("access_token"))))
+        tt = lj.get("temp_token")
+        # Wrong code rejected.
+        bad = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": "000000"})
+        check("2fa: wrong code -> 401", bad.status_code == 401, str(bad.status_code))
+        # Correct code yields a real token.
+        good = client.post("/auth/2fa/verify", json={"temp_token": tt, "code": _pyotp.TOTP(secret).now()})
+        check("2fa: correct code -> token", good.status_code == 200 and bool(good.json().get("access_token")),
+              str(good.status_code))
+        # Disable 2FA again so the account returns to single-factor.
+        dis = client.post("/auth/2fa/disable", headers=H)
+        check("2fa disable -> 200", dis.status_code == 200, str(dis.status_code))
+        lr2 = client.post("/auth/login", json={"email": "smokeowner@coretext.test", "password": "ownerpass1"})
+        check("2fa off: login returns token directly", bool(lr2.json().get("access_token")), str(lr2.status_code))
     print(f"\n=== {PASS} passed, {FAIL} failed ===")
     sys.exit(1 if FAIL else 0)
 
