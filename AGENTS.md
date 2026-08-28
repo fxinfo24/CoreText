@@ -13,8 +13,14 @@ backed by a real LLM.
 - **Backend:** FastAPI (Python 3.12 venv at `backend/.venv`), SQLAlchemy ORM.
 - **Frontend:** React + Vite + TypeScript (`frontend/`), axios, Tailwind.
 - **DB:** Postgres in prod (Neon, via `DATABASE_URL`); SQLite locally.
-- **Deploy:** Vercel, auto-deploys from `main`. `vercel.json` strips `/api` (so
-  routes are mounted at root, e.g. `/auth/login` not `/api/auth/login`).
+- **Deploy:** Vercel, auto-deploys from `main`. `vercel.json` uses
+  `experimentalServices` with `backend.routePrefix: "/api"`, so the FastAPI app is
+  served under `/api` (e.g. `/api/auth/login`, `/api/sites`). Do NOT mount routes at
+  root. The frontend (`src/api.ts`) already calls `/api/...` (relative, baseURL `''`),
+  which is correct for this config. (Previous docs claiming "vercel.json strips `/api`
+  and backend is at root" were WRONG for this file and would break the app — verified
+  2026-08-28: `/api/auth/login` returns real FastAPI 401s; `/auth/login` falls through
+  to the SPA.)
 - **Repo:** `fxinfo24/CoreText` (branch `main`), local `/Volumes/ByteSmith/BuildLab/CoreText`.
 
 ## 2. Architecture
@@ -114,8 +120,10 @@ ANTHROPIC_API_KEY=...              # optional fallback
 exposed — it should be set via Settings UI or `OPENROUTER_API_KEY` env, and rotated.
 
 ## 5. Gotchas / known sharp edges
-- **`vercel.json` strips `/api`** — backend routes are mounted at root. If you add a
-  route, do NOT prefix with `/api` (it works locally but 404s in prod).
+- **`vercel.json` serves the backend under `/api`** (not root). `vercel.json` uses
+  `experimentalServices` with `backend.routePrefix: "/api"`. Frontend calls are
+  `/api/...` (relative). Adding a route: prefix it with `/api` to match. A request to a
+  non-`/api` path falls through to the static SPA (so `/auth/login` returns HTML, not JSON).
 - **`create_all` won't migrate** — adding a column needs a migration step (see
   `_migrate_settings_columns`). Don't assume a new `Column` appears in prod automatically.
 - **Secrets in chat** — user has pasted live keys in conversation; treat as compromised,
@@ -128,6 +136,13 @@ exposed — it should be set via Settings UI or `OPENROUTER_API_KEY` env, and ro
   these are SQLAlchemy typing quirks; runtime is correct. Don't "fix" by retyping.
 - **Bootstrap is destructive-guarded but not self-healing for data** — `_ensure_owner`
   demotes competing owners to admin; if you ever want multiple owners, change the model.
+- **Owner-precedence bug fixed (2026-08-28, HEAD after `be5931c`):** `_ensure_owner` used
+  to fall back to "promote oldest admin to owner" when the pinned owner was absent. On a
+  fresh/reset Neon DB that made the dev-default `admin@coretext.local`/`changeme123` the
+  owner (and left `fxinfo24@gmail.com` with NO account). Now it always GUARANTEES the
+  pinned `OWNER_EMAIL` is owner — promotes it if present, or creates it with a one-time
+  setup password if absent. `_seed_admin` still seeds the env account as content `admin`
+  (not owner). NEVER revert `_seed_admin` back to owner.
 
 ## 6. How to run locally
 ```bash

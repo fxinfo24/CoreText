@@ -1,5 +1,6 @@
 import os
 import uuid
+import secrets
 
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal
@@ -76,32 +77,31 @@ def _ensure_owner(db: Session):
     # 2) If a genuine owner now exists (pinned or otherwise), nothing else to do.
     if db.query(models.DBUser).filter(models.DBUser.role == ROLE_OWNER).first():
         return
-    # 3) Otherwise promote the oldest admin so there's always a super-admin.
+    # 3) GUARANTEE the pinned super-admin exists and is owner. Never fall back to
+    #    a non-pinned account (e.g. the dev default admin@coretext.local). If the
+    #    pinned email is absent (e.g. the Neon DB was reset), create it with a
+    #    one-time setup password so the instance can never be orphaned OR hijacked
+    #    by a default-credential account.
     for email in OWNER_EMAILS:
-        pass
-    # 3) Otherwise promote the oldest admin so there's always a super-admin.
-    fallback = (
-        db.query(models.DBUser)
-        .filter(models.DBUser.role == "admin")
-        .order_by(models.DBUser.created_at)
-        .first()
-    )
-    if fallback:
-        fallback.role = ROLE_OWNER
+        u = db.query(models.DBUser).filter(models.DBUser.email == email).first()
+        if u:
+            u.role = ROLE_OWNER
+            db.commit()
+            print(f"Promoted pinned owner account: {email}")
+            return
+        pw = secrets.token_urlsafe(12)
+        u = models.DBUser(
+            id=uuid.uuid4().hex,
+            email=email,
+            hashed_password=hash_password(pw),
+            full_name="CoreText Owner",
+            role=ROLE_OWNER,
+        )
+        db.add(u)
         db.commit()
-        print(f"Promoted oldest admin to owner: {fallback.email}")
+        print(f"Created pinned owner account {email} with one-time setup password: {pw}")
+        print(">>> CHANGE THIS PASSWORD IMMEDIATELY via User Management (Security > Profile).")
         return
-    # 4) Last resort: if there is no admin at all, promote the oldest user of
-    #    any role so the instance is never orphaned without a super-admin.
-    any_user = (
-        db.query(models.DBUser)
-        .order_by(models.DBUser.created_at)
-        .first()
-    )
-    if any_user:
-        any_user.role = ROLE_OWNER
-        db.commit()
-        print(f"Promoted oldest user to owner (no admin found): {any_user.email}")
 
 
 def _migrate_settings_columns(db: Session):
